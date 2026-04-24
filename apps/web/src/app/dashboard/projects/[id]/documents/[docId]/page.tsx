@@ -75,9 +75,9 @@ function Toolbar({ editor }: { editor: any }) {
       display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 2,
       padding: '6px 10px', borderBottom: '0.5px solid rgba(0,0,0,0.08)', background: '#f8f7f4',
     }}>
-      <ToolBtn title="Heading 1" active={editor.isActive('heading', { level: 1 })} onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}>H1</ToolBtn>
-      <ToolBtn title="Heading 2" active={editor.isActive('heading', { level: 2 })} onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}>H2</ToolBtn>
-      <ToolBtn title="Heading 3" active={editor.isActive('heading', { level: 3 })} onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}>H3</ToolBtn>
+      <ToolBtn title="H1" active={editor.isActive('heading', { level: 1 })} onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}>H1</ToolBtn>
+      <ToolBtn title="H2" active={editor.isActive('heading', { level: 2 })} onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}>H2</ToolBtn>
+      <ToolBtn title="H3" active={editor.isActive('heading', { level: 3 })} onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}>H3</ToolBtn>
       <Divider />
       <ToolBtn title="Bold" active={editor.isActive('bold')} onClick={() => editor.chain().focus().toggleBold().run()}><b>B</b></ToolBtn>
       <ToolBtn title="Italic" active={editor.isActive('italic')} onClick={() => editor.chain().focus().toggleItalic().run()}><i>I</i></ToolBtn>
@@ -92,8 +92,8 @@ function Toolbar({ editor }: { editor: any }) {
       <ToolBtn title="Align right" active={editor.isActive({ textAlign: 'right' })} onClick={() => editor.chain().focus().setTextAlign('right').run()}>≡R</ToolBtn>
       <Divider />
       <ToolBtn title="Insert table" onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}>⊞ Table</ToolBtn>
-      <ToolBtn title="Add column after" disabled={!editor.can().addColumnAfter()} onClick={() => editor.chain().focus().addColumnAfter().run()}>+Col</ToolBtn>
-      <ToolBtn title="Add row after" disabled={!editor.can().addRowAfter()} onClick={() => editor.chain().focus().addRowAfter().run()}>+Row</ToolBtn>
+      <ToolBtn title="Add column" disabled={!editor.can().addColumnAfter()} onClick={() => editor.chain().focus().addColumnAfter().run()}>+Col</ToolBtn>
+      <ToolBtn title="Add row" disabled={!editor.can().addRowAfter()} onClick={() => editor.chain().focus().addRowAfter().run()}>+Row</ToolBtn>
       <ToolBtn title="Delete table" disabled={!editor.can().deleteTable()} onClick={() => editor.chain().focus().deleteTable().run()}>✕Tbl</ToolBtn>
       <Divider />
       <ToolBtn title="Undo" disabled={!editor.can().undo()} onClick={() => editor.chain().focus().undo().run()}>↩</ToolBtn>
@@ -104,14 +104,10 @@ function Toolbar({ editor }: { editor: any }) {
 
 function makeExtensions(placeholder: string) {
   return [
-    StarterKit,
-    Underline,
-    Highlight,
+    StarterKit, Underline, Highlight,
     TextAlign.configure({ types: ['heading', 'paragraph'] }),
     Table.configure({ resizable: true }),
-    TableRow,
-    TableHeader,
-    TableCell,
+    TableRow, TableHeader, TableCell,
     Placeholder.configure({ placeholder }),
     CharacterCount,
   ]
@@ -147,17 +143,26 @@ export default function DocumentEditorPage() {
   const [showReference, setShowReference] = useState(true)
   const [docStatus, setDocStatus] = useState('draft')
   const [hasExample, setHasExample] = useState(false)
+  const [userRole, setUserRole] = useState<string | null>(null)
+  const [submitting, setSubmitting] = useState(false)
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const latestContent = useRef<any>(null)
 
+  // Load session role
+  useEffect(() => {
+    fetch('/api/auth/session')
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data?.user) setUserRole(data.user.role) })
+  }, [])
+
+  // Load document
   useEffect(() => {
     fetch(`/api/projects/${projectId}/documents/${docId}`)
       .then(r => r.ok ? r.json() : Promise.reject())
       .then((data: DocData) => {
         setDoc(data)
         setDocStatus(data.status)
-        // Check if a real example exists
         const ex = data.example_content
         setHasExample(!!(ex && typeof ex === 'object' && Object.keys(ex).length > 0))
         setLoading(false)
@@ -189,6 +194,17 @@ export default function DocumentEditorPage() {
     })
   }
 
+  async function submitForReview() {
+    setSubmitting(true)
+    // Save any pending content first
+    if (latestContent.current) {
+      if (saveTimer.current) clearTimeout(saveTimer.current)
+      await save(latestContent.current)
+    }
+    await updateStatus('review')
+    setSubmitting(false)
+  }
+
   const editor = useEditor({
     extensions: makeExtensions('Start writing this record…'),
     content: '',
@@ -204,13 +220,11 @@ export default function DocumentEditorPage() {
 
   useEffect(() => {
     if (!editor || !doc) return
-    const content = doc.content
-    if (content && Object.keys(content).length > 0) {
-      editor.commands.setContent(content)
+    if (doc.content && Object.keys(doc.content).length > 0) {
+      editor.commands.setContent(doc.content)
     }
   }, [editor, doc])
 
-  // Reference editor — read-only, shows example_content
   const refEditor = useEditor({
     extensions: makeExtensions(''),
     content: '',
@@ -242,13 +256,23 @@ export default function DocumentEditorPage() {
 
   useEffect(() => () => { if (saveTimer.current) clearTimeout(saveTimer.current) }, [])
 
-  if (loading) {
-    return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh', color: '#9b9991', fontSize: 13 }}>Loading record…</div>
-  }
+  if (loading) return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh', color: '#9b9991', fontSize: 13 }}>
+      Loading record…
+    </div>
+  )
   if (!doc) return null
 
   const st = DOC_STATUS[docStatus] || DOC_STATUS.draft
   const charCount = editor?.storage.characterCount?.characters() ?? 0
+  const isClient = userRole === 'client'
+  const isApproved = docStatus === 'approved'
+  const isReview = docStatus === 'review'
+
+  // Back link — clients go to client project page, others to admin project page
+  const backHref = isClient
+    ? `/dashboard/client/projects/${projectId}`
+    : `/dashboard/projects/${projectId}`
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 60px)' }}>
@@ -260,35 +284,71 @@ export default function DocumentEditorPage() {
         padding: '0 20px', height: 48, flexShrink: 0,
         borderBottom: '0.5px solid rgba(0,0,0,0.08)', background: '#fff',
       }}>
+        {/* Breadcrumb */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#9b9991' }}>
-          <Link href="/dashboard/projects" style={{ color: '#9b9991', textDecoration: 'none' }}>Projects</Link>
+          <Link href={isClient ? '/dashboard/client' : '/dashboard/projects'} style={{ color: '#9b9991', textDecoration: 'none' }}>
+            {isClient ? 'My Projects' : 'Projects'}
+          </Link>
           <span>›</span>
-          <Link href={`/dashboard/projects/${projectId}`} style={{ color: '#9b9991', textDecoration: 'none' }}>{doc.project_name}</Link>
+          <Link href={backHref} style={{ color: '#9b9991', textDecoration: 'none' }}>{doc.project_name}</Link>
           <span>›</span>
           <span style={{ color: '#1a1a18', fontWeight: 500 }}>{doc.name}</span>
         </div>
 
+        {/* Right controls */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          {/* Save state */}
           <span style={{
-            fontSize: 11, color:
-              saveState === 'saved' ? '#27500A' :
-              saveState === 'saving' ? '#633806' :
-              saveState === 'error' ? '#7C1C0C' : '#9b9991',
+            fontSize: 11,
+            color: saveState === 'saved' ? '#27500A' : saveState === 'saving' ? '#633806' : saveState === 'error' ? '#7C1C0C' : '#9b9991',
           }}>
             {saveState === 'saved' ? '✓ Saved' : saveState === 'saving' ? 'Saving…' : saveState === 'error' ? '⚠ Save failed' : '● Unsaved'}
           </span>
 
-          <select value={docStatus} onChange={e => updateStatus(e.target.value)} style={{
-            height: 28, padding: '0 8px', fontSize: 12,
-            border: `0.5px solid ${st.border}`, borderRadius: 6,
-            background: st.bg, color: st.color, cursor: 'pointer',
-          }}>
-            <option value="draft">Draft</option>
-            <option value="inprogress">In progress</option>
-            <option value="review">In review</option>
-            <option value="approved">Approved</option>
-          </select>
+          {/* Status display */}
+          <span style={{
+            fontSize: 11, padding: '3px 10px', borderRadius: 6,
+            background: st.bg, color: st.color, border: `0.5px solid ${st.border}`,
+          }}>{st.label}</span>
 
+          {/* Admin/consultant: full status dropdown */}
+          {!isClient && (
+            <select value={docStatus} onChange={e => updateStatus(e.target.value)} style={{
+              height: 28, padding: '0 8px', fontSize: 12,
+              border: `0.5px solid ${st.border}`, borderRadius: 6,
+              background: st.bg, color: st.color, cursor: 'pointer',
+            }}>
+              <option value="draft">Draft</option>
+              <option value="inprogress">In progress</option>
+              <option value="review">In review</option>
+              <option value="approved">Approved</option>
+            </select>
+          )}
+
+          {/* Client: Submit for review button */}
+          {isClient && !isApproved && !isReview && (
+            <button
+              onClick={submitForReview}
+              disabled={submitting}
+              style={{
+                height: 28, padding: '0 12px', fontSize: 12, cursor: 'pointer',
+                background: '#185FA5', border: 'none', borderRadius: 6,
+                color: '#fff', opacity: submitting ? 0.7 : 1,
+              }}
+            >{submitting ? 'Submitting…' : 'Submit for review'}</button>
+          )}
+
+          {/* Client: In review state */}
+          {isClient && isReview && (
+            <span style={{ fontSize: 12, color: '#0C447C' }}>⏳ Awaiting consultant review</span>
+          )}
+
+          {/* Client: Approved state */}
+          {isClient && isApproved && (
+            <span style={{ fontSize: 12, color: '#27500A' }}>✓ Approved</span>
+          )}
+
+          {/* Reference toggle */}
           <button onClick={() => setShowReference(v => !v)} style={{
             height: 28, padding: '0 10px', fontSize: 12, cursor: 'pointer',
             background: showReference ? '#E6F1FB' : 'transparent',
@@ -322,31 +382,42 @@ export default function DocumentEditorPage() {
         <span style={{ color: '#9b9991' }}>{doc.device_name}</span>
       </div>
 
+      {/* Approved banner for clients */}
+      {isClient && isApproved && (
+        <div style={{
+          padding: '10px 20px', background: '#EAF3DE',
+          borderBottom: '0.5px solid #97C459',
+          fontSize: 12, color: '#27500A', flexShrink: 0,
+        }}>
+          ✓ This record has been approved. It is now read-only.
+        </div>
+      )}
+
       {/* Split pane */}
       <div style={{
         flex: 1, overflow: 'hidden',
         display: 'grid',
         gridTemplateColumns: showReference ? '1fr 1fr' : '1fr',
       }}>
-        {/* Left — record (editable) */}
+        {/* Left — record */}
         <div style={{
           display: 'flex', flexDirection: 'column', overflow: 'hidden',
           borderRight: showReference ? '0.5px solid rgba(0,0,0,0.1)' : 'none',
         }}>
-          <Toolbar editor={editor} />
+          {/* Hide toolbar if approved for clients */}
+          {!(isClient && isApproved) && <Toolbar editor={editor} />}
+
           <div style={{ flex: 1, overflowY: 'auto', padding: '28px 40px' }}>
-            <EditorContent editor={editor} />
+            <EditorContent editor={isClient && isApproved ? refEditor : editor} />
           </div>
         </div>
 
-        {/* Right — example (read-only) */}
+        {/* Right — example */}
         {showReference && (
           <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#fafaf8' }}>
             <div style={{
-              padding: '7px 16px',
-              borderBottom: '0.5px solid rgba(0,0,0,0.08)',
-              background: '#f1efe8',
-              fontSize: 11, fontWeight: 500, color: '#5F5E5A',
+              padding: '7px 16px', borderBottom: '0.5px solid rgba(0,0,0,0.08)',
+              background: '#f1efe8', fontSize: 11, fontWeight: 500, color: '#5F5E5A',
               display: 'flex', alignItems: 'center', gap: 6,
             }}>
               <span>▐</span>
@@ -361,8 +432,8 @@ export default function DocumentEditorPage() {
                 <EditorContent editor={refEditor} />
               ) : (
                 <div style={{
-                  display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                  height: '100%', gap: 10, textAlign: 'center',
+                  display: 'flex', flexDirection: 'column', alignItems: 'center',
+                  justifyContent: 'center', height: '100%', gap: 10, textAlign: 'center',
                 }}>
                   <div style={{ fontSize: 28, opacity: 0.3 }}>▐</div>
                   <div style={{ fontSize: 13, fontWeight: 500, color: '#5F5E5A' }}>No example available</div>

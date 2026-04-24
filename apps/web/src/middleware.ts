@@ -11,11 +11,23 @@ export async function middleware(req: NextRequest) {
 
   // Everything else requires a session
   const user = await getSessionFromRequest(req)
-
   if (!user) {
     const loginUrl = new URL('/login', req.url)
     loginUrl.searchParams.set('from', pathname)
     return NextResponse.redirect(loginUrl)
+  }
+
+  // Client role — restricted access
+  if (user.role === 'client') {
+    if (
+      pathname.startsWith('/dashboard/client') ||
+      pathname.startsWith('/dashboard/projects') ||
+      pathname.startsWith('/api/')
+    ) {
+      return NextResponse.next()
+    }
+    // Everything else → client home
+    return NextResponse.redirect(new URL('/dashboard/client', req.url))
   }
 
   // Admin-only routes

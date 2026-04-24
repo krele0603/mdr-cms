@@ -11,7 +11,7 @@ const allNavItems = [
   {
     label: 'Projects',
     href: '/dashboard/projects',
-    roles: ['admin', 'consultant', 'client'],
+    roles: ['admin', 'consultant'],
     icon: (
       <svg style={{width:15,height:15,stroke:'currentColor',fill:'none',strokeWidth:1.5,strokeLinecap:'round' as const,strokeLinejoin:'round' as const}} viewBox="0 0 24 24">
         <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
@@ -32,7 +32,7 @@ const allNavItems = [
     ),
   },
   {
-    label: 'Document lists',
+    label: 'TF Structures',
     href: '/dashboard/lists',
     roles: ['admin'],
     icon: (
@@ -56,6 +56,17 @@ const allNavItems = [
         <circle cx="9" cy="7" r="4"/>
         <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
         <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+      </svg>
+    ),
+  },
+  // Client-only nav
+  {
+    label: 'My Projects',
+    href: '/dashboard/client',
+    roles: ['client'],
+    icon: (
+      <svg style={{width:15,height:15,stroke:'currentColor',fill:'none',strokeWidth:1.5,strokeLinecap:'round' as const,strokeLinejoin:'round' as const}} viewBox="0 0 24 24">
+        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
       </svg>
     ),
   },
