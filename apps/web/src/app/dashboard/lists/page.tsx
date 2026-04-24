@@ -18,6 +18,16 @@ interface ListDoc {
   annex: string
   name: string
   code: string
+  template_id: string | null
+  template_name: string | null
+}
+
+interface Template {
+  id: string
+  name: string
+  tag_code: string
+  annex: string | null
+  status: string
 }
 
 export default function ListsPage() {
@@ -35,11 +45,15 @@ export default function ListsPage() {
   const [cloneFrom, setCloneFrom] = useState('')
   const [savingList, setSavingList] = useState(false)
 
-  // New doc form
+  // Add document modal
   const [showAddDoc, setShowAddDoc] = useState(false)
-  const [newDocName, setNewDocName] = useState('')
-  const [newDocCode, setNewDocCode] = useState('')
+  const [templates, setTemplates] = useState<Template[]>([])
+  const [templatesLoading, setTemplatesLoading] = useState(false)
+  const [templateSearch, setTemplateSearch] = useState('')
+  const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null)
+  const [selectedAnnex, setSelectedAnnex] = useState('')
   const [savingDoc, setSavingDoc] = useState(false)
+  const [addDocError, setAddDocError] = useState<string | null>(null)
 
   // Edit doc
   const [editDocId, setEditDocId] = useState<string | null>(null)
@@ -61,6 +75,13 @@ export default function ListsPage() {
     setDocsLoading(false)
   }
 
+  async function loadTemplates() {
+    setTemplatesLoading(true)
+    const res = await fetch('/api/templates')
+    if (res.ok) setTemplates(await res.json())
+    setTemplatesLoading(false)
+  }
+
   useEffect(() => { loadLists() }, [])
 
   function selectList(id: string) {
@@ -69,6 +90,44 @@ export default function ListsPage() {
     setShowAddDoc(false)
     setEditDocId(null)
     loadDocs(id)
+  }
+
+  function openAddDoc() {
+    setShowAddDoc(true)
+    setSelectedTemplate(null)
+    setSelectedAnnex(activeAnnex)
+    setTemplateSearch('')
+    setAddDocError(null)
+    loadTemplates()
+  }
+
+  function selectTemplate(t: Template) {
+    setSelectedTemplate(t)
+    // Default annex to template's annex, or current active annex if none
+    setSelectedAnnex(t.annex || activeAnnex)
+  }
+
+  async function addDoc() {
+    if (!selectedTemplate || !selectedAnnex || !activeListId) return
+    setSavingDoc(true)
+    setAddDocError(null)
+    try {
+      const res = await fetch(`/api/lists/${activeListId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ template_id: selectedTemplate.id, annex: selectedAnnex }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to add')
+      setShowAddDoc(false)
+      setSelectedTemplate(null)
+      await loadDocs(activeListId)
+      await loadLists()
+    } catch (e: any) {
+      setAddDocError(e.message)
+    } finally {
+      setSavingDoc(false)
+    }
   }
 
   async function createList() {
@@ -89,20 +148,6 @@ export default function ListsPage() {
     }
   }
 
-  async function addDoc() {
-    if (!newDocName.trim() || !newDocCode.trim() || !activeListId) return
-    setSavingDoc(true)
-    await fetch(`/api/lists/${activeListId}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ annex: activeAnnex, name: newDocName, code: newDocCode }),
-    })
-    setNewDocName(''); setNewDocCode(''); setShowAddDoc(false)
-    setSavingDoc(false)
-    await loadDocs(activeListId)
-    await loadLists()
-  }
-
   async function deleteDoc(docId: string) {
     if (!activeListId || !confirm('Remove this document from the list?')) return
     await fetch(`/api/lists/${activeListId}/${docId}`, { method: 'DELETE' })
@@ -121,6 +166,15 @@ export default function ListsPage() {
     await loadDocs(activeListId)
   }
 
+  // Filter templates by search + exclude already-in-list ones
+  const alreadyInList = new Set(docs.map(d => d.template_id).filter(Boolean))
+  const filteredTemplates = templates.filter(t => {
+    if (alreadyInList.has(t.id)) return false
+    if (!templateSearch.trim()) return true
+    const q = templateSearch.toLowerCase()
+    return t.name.toLowerCase().includes(q) || t.tag_code.toLowerCase().includes(q)
+  })
+
   const activeList = lists.find(l => l.id === activeListId)
   const annexDocs = docs.filter(d => d.annex === activeAnnex)
   const annexCounts = ANNEXES.reduce((acc, a) => {
@@ -132,11 +186,11 @@ export default function ListsPage() {
     <div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
         <div>
-          <h1 style={{ fontSize: 22, fontWeight: 500, marginBottom: 2 }}>Document lists</h1>
+          <h1 style={{ fontSize: 22, fontWeight: 500, marginBottom: 2 }}>TF Structures</h1>
           <p style={{ fontSize: 13, color: '#6b6a64' }}>Define document structure per device type</p>
         </div>
         <button onClick={() => setShowNewList(true)} style={{ height: 32, padding: '0 14px', fontSize: 13, background: '#185FA5', border: '0.5px solid #185FA5', borderRadius: 8, color: '#fff', cursor: 'pointer' }}>
-          + New list
+          + New structure
         </button>
       </div>
 
@@ -164,11 +218,9 @@ export default function ListsPage() {
       {/* Annex editor */}
       {activeListId && (
         <div style={{ display: 'grid', gridTemplateColumns: '180px minmax(0,1fr)', gap: 14 }}>
-
-          {/* Annex nav */}
           <div style={{ border: '0.5px solid rgba(0,0,0,0.1)', borderRadius: 12, overflow: 'hidden' }}>
             {ANNEXES.map(a => (
-              <div key={a} onClick={() => { setActiveAnnex(a); setShowAddDoc(false); setEditDocId(null) }} style={{
+              <div key={a} onClick={() => { setActiveAnnex(a); setEditDocId(null) }} style={{
                 padding: '9px 12px', cursor: 'pointer', fontSize: 13,
                 borderBottom: '0.5px solid rgba(0,0,0,0.06)',
                 background: a === activeAnnex ? '#E6F1FB' : '#fff',
@@ -184,65 +236,56 @@ export default function ListsPage() {
             ))}
           </div>
 
-          {/* Document panel */}
           <div style={{ border: '0.5px solid rgba(0,0,0,0.1)', borderRadius: 12, overflow: 'hidden' }}>
             <div style={{ padding: '11px 14px', borderBottom: '0.5px solid rgba(0,0,0,0.08)', background: '#f8f7f4', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div>
                 <div style={{ fontSize: 14, fontWeight: 500 }}>{activeAnnex}</div>
                 <div style={{ fontSize: 12, color: '#6b6a64', marginTop: 1 }}>{annexDocs.length} document{annexDocs.length !== 1 ? 's' : ''}</div>
               </div>
-              <button onClick={() => { setShowAddDoc(true); setEditDocId(null) }} style={{ height: 30, padding: '0 12px', fontSize: 12, background: '#185FA5', border: 'none', borderRadius: 8, color: '#fff', cursor: 'pointer' }}>
+              <button onClick={openAddDoc} style={{ height: 30, padding: '0 12px', fontSize: 12, background: '#185FA5', border: 'none', borderRadius: 8, color: '#fff', cursor: 'pointer' }}>
                 + Add document
               </button>
             </div>
 
             {docsLoading ? (
               <div style={{ padding: 32, textAlign: 'center', color: '#9b9991', fontSize: 13 }}>Loading...</div>
-            ) : annexDocs.length === 0 && !showAddDoc ? (
+            ) : annexDocs.length === 0 ? (
               <div style={{ padding: 36, textAlign: 'center', color: '#9b9991', fontSize: 13 }}>
                 No documents in {activeAnnex}.<br />Use "Add document" to build this annex.
               </div>
             ) : (
-              <>
-                {annexDocs.map(d => (
-                  <div key={d.id} style={{ padding: '10px 14px', borderBottom: '0.5px solid rgba(0,0,0,0.06)', display: 'flex', alignItems: 'center', gap: 10 }}>
-                    {editDocId === d.id ? (
-                      <>
-                        <input value={editDocName} onChange={e => setEditDocName(e.target.value)}
-                          style={{ flex: 2, padding: '5px 8px', fontSize: 12, border: '0.5px solid rgba(0,0,0,0.2)', borderRadius: 6, outline: 'none' }} />
-                        <input value={editDocCode} onChange={e => setEditDocCode(e.target.value)}
-                          style={{ flex: 1, padding: '5px 8px', fontSize: 12, border: '0.5px solid rgba(0,0,0,0.2)', borderRadius: 6, outline: 'none', fontFamily: 'monospace' }} />
-                        <button onClick={saveEditDoc} style={{ height: 26, padding: '0 10px', fontSize: 12, background: '#185FA5', border: 'none', borderRadius: 6, color: '#fff', cursor: 'pointer' }}>Save</button>
-                        <button onClick={() => setEditDocId(null)} style={{ height: 26, padding: '0 10px', fontSize: 12, background: 'none', border: '0.5px solid rgba(0,0,0,0.2)', borderRadius: 6, cursor: 'pointer' }}>Cancel</button>
-                      </>
-                    ) : (
-                      <>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontSize: 13, fontWeight: 500 }}>{d.name}</div>
-                          <div style={{ fontSize: 11, color: '#9b9991', fontFamily: 'monospace', marginTop: 1 }}>{d.code}</div>
+              annexDocs.map(d => (
+                <div key={d.id} style={{ padding: '10px 14px', borderBottom: '0.5px solid rgba(0,0,0,0.06)', display: 'flex', alignItems: 'center', gap: 10 }}>
+                  {editDocId === d.id ? (
+                    <>
+                      <input value={editDocName} onChange={e => setEditDocName(e.target.value)}
+                        style={{ flex: 2, padding: '5px 8px', fontSize: 12, border: '0.5px solid rgba(0,0,0,0.2)', borderRadius: 6, outline: 'none' }} />
+                      <input value={editDocCode} onChange={e => setEditDocCode(e.target.value)}
+                        style={{ flex: 1, padding: '5px 8px', fontSize: 12, border: '0.5px solid rgba(0,0,0,0.2)', borderRadius: 6, outline: 'none', fontFamily: 'monospace' }} />
+                      <button onClick={saveEditDoc} style={{ height: 26, padding: '0 10px', fontSize: 12, background: '#185FA5', border: 'none', borderRadius: 6, color: '#fff', cursor: 'pointer' }}>Save</button>
+                      <button onClick={() => setEditDocId(null)} style={{ height: 26, padding: '0 10px', fontSize: 12, background: 'none', border: '0.5px solid rgba(0,0,0,0.2)', borderRadius: 6, cursor: 'pointer' }}>Cancel</button>
+                    </>
+                  ) : (
+                    <>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 13, fontWeight: 500 }}>{d.name}</div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                          <span style={{ fontSize: 11, color: '#9b9991', fontFamily: 'monospace' }}>{d.code}</span>
+                          {d.template_name && (
+                            <span style={{ fontSize: 10, padding: '1px 5px', borderRadius: 3, background: '#E6F1FB', color: '#0C447C', border: '0.5px solid #85B7EB' }}>
+                              template linked
+                            </span>
+                          )}
                         </div>
-                        <button onClick={() => { setEditDocId(d.id); setEditDocName(d.name); setEditDocCode(d.code) }}
-                          style={{ height: 26, padding: '0 10px', fontSize: 12, background: '#E6F1FB', border: '0.5px solid #85B7EB', borderRadius: 6, color: '#185FA5', cursor: 'pointer' }}>Edit</button>
-                        <button onClick={() => deleteDoc(d.id)}
-                          style={{ height: 26, padding: '0 10px', fontSize: 12, background: '#FCEBEB', border: '0.5px solid #F09595', borderRadius: 6, color: '#A32D2D', cursor: 'pointer' }}>Remove</button>
-                      </>
-                    )}
-                  </div>
-                ))}
-              </>
-            )}
-
-            {showAddDoc && (
-              <div style={{ padding: '10px 14px', borderTop: '0.5px solid rgba(0,0,0,0.08)', background: '#f8f7f4', display: 'flex', gap: 8, alignItems: 'center' }}>
-                <input value={newDocName} onChange={e => setNewDocName(e.target.value)} placeholder="Document name"
-                  style={{ flex: 2, padding: '6px 9px', fontSize: 12, border: '0.5px solid rgba(0,0,0,0.2)', borderRadius: 6, outline: 'none' }} />
-                <input value={newDocCode} onChange={e => setNewDocCode(e.target.value)} placeholder="Code (e.g. RM-001)"
-                  style={{ flex: 1, padding: '6px 9px', fontSize: 12, border: '0.5px solid rgba(0,0,0,0.2)', borderRadius: 6, outline: 'none', fontFamily: 'monospace' }} />
-                <button onClick={addDoc} disabled={savingDoc} style={{ height: 30, padding: '0 12px', fontSize: 12, background: savingDoc ? '#B5D4F4' : '#185FA5', border: 'none', borderRadius: 6, color: '#fff', cursor: 'pointer' }}>
-                  {savingDoc ? 'Adding...' : 'Add'}
-                </button>
-                <button onClick={() => setShowAddDoc(false)} style={{ height: 30, padding: '0 10px', fontSize: 12, background: 'none', border: '0.5px solid rgba(0,0,0,0.2)', borderRadius: 6, cursor: 'pointer' }}>Cancel</button>
-              </div>
+                      </div>
+                      <button onClick={() => { setEditDocId(d.id); setEditDocName(d.name); setEditDocCode(d.code) }}
+                        style={{ height: 26, padding: '0 10px', fontSize: 12, background: '#E6F1FB', border: '0.5px solid #85B7EB', borderRadius: 6, color: '#185FA5', cursor: 'pointer' }}>Edit</button>
+                      <button onClick={() => deleteDoc(d.id)}
+                        style={{ height: 26, padding: '0 10px', fontSize: 12, background: '#FCEBEB', border: '0.5px solid #F09595', borderRadius: 6, color: '#A32D2D', cursor: 'pointer' }}>Remove</button>
+                    </>
+                  )}
+                </div>
+              ))
             )}
           </div>
         </div>
@@ -250,34 +293,143 @@ export default function ListsPage() {
 
       {!activeListId && !loading && (
         <div style={{ padding: 40, textAlign: 'center', color: '#9b9991', fontSize: 13, background: '#fff', border: '0.5px solid rgba(0,0,0,0.1)', borderRadius: 12 }}>
-          Select a list above to manage its documents.
+          Select a structure above to manage its documents.
         </div>
       )}
 
-      {/* New list modal */}
+      {/* ── Add document modal ── */}
+      {showAddDoc && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 20,
+        }} onClick={() => !savingDoc && setShowAddDoc(false)}>
+          <div style={{
+            background: '#fff', borderRadius: 14, width: '100%', maxWidth: 500,
+            border: '0.5px solid rgba(0,0,0,0.12)', boxShadow: '0 8px 32px rgba(0,0,0,0.14)',
+            display: 'flex', flexDirection: 'column', maxHeight: '80vh',
+          }} onClick={e => e.stopPropagation()}>
+
+            {/* Header */}
+            <div style={{ padding: '14px 20px', borderBottom: '0.5px solid rgba(0,0,0,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+              <div style={{ fontSize: 14, fontWeight: 500 }}>Add document from template</div>
+              <button onClick={() => setShowAddDoc(false)} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#6b6a64' }}>×</button>
+            </div>
+
+            {/* Search */}
+            <div style={{ padding: '12px 20px', borderBottom: '0.5px solid rgba(0,0,0,0.06)', flexShrink: 0 }}>
+              <input
+                value={templateSearch}
+                onChange={e => setTemplateSearch(e.target.value)}
+                placeholder="Search templates by name or tag…"
+                autoFocus
+                style={{ width: '100%', height: 34, padding: '0 10px', fontSize: 13, border: '0.5px solid rgba(0,0,0,0.18)', borderRadius: 8, outline: 'none', boxSizing: 'border-box' as const }}
+              />
+            </div>
+
+            {/* Template list */}
+            <div style={{ flex: 1, overflowY: 'auto' }}>
+              {templatesLoading ? (
+                <div style={{ padding: 32, textAlign: 'center', color: '#9b9991', fontSize: 13 }}>Loading templates…</div>
+              ) : filteredTemplates.length === 0 ? (
+                <div style={{ padding: 32, textAlign: 'center', color: '#9b9991', fontSize: 13 }}>
+                  {templateSearch ? 'No templates match your search.' : 'All templates are already in this list.'}
+                </div>
+              ) : filteredTemplates.map(t => {
+                const isSelected = selectedTemplate?.id === t.id
+                return (
+                  <div
+                    key={t.id}
+                    onClick={() => selectTemplate(t)}
+                    style={{
+                      padding: '10px 20px', cursor: 'pointer',
+                      borderBottom: '0.5px solid rgba(0,0,0,0.06)',
+                      background: isSelected ? '#E6F1FB' : '#fff',
+                      display: 'flex', alignItems: 'center', gap: 10,
+                    }}
+                    onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = '#f8f7f4' }}
+                    onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = '#fff' }}
+                  >
+                    <div style={{
+                      width: 30, height: 30, borderRadius: 6, flexShrink: 0,
+                      background: isSelected ? '#B5D4F4' : '#E6F1FB',
+                      color: '#0C447C', border: '0.5px solid #85B7EB',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: 9, fontWeight: 600,
+                    }}>DOC</div>
+
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: isSelected ? 500 : 400, color: isSelected ? '#0C447C' : '#1a1a18' }}>{t.name}</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                        <span style={{ fontSize: 11, color: '#9b9991', fontFamily: 'monospace' }}>${t.tag_code}</span>
+                        {t.annex && (
+                          <span style={{ fontSize: 10, padding: '1px 5px', borderRadius: 3, background: '#f1efe8', color: '#6b6a64', border: '0.5px solid #D3D1C7' }}>{t.annex}</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {isSelected && (
+                      <div style={{ color: '#185FA5', fontSize: 16, flexShrink: 0 }}>✓</div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Annex selector + confirm — shown when template is selected */}
+            {selectedTemplate && (
+              <div style={{ padding: '14px 20px', borderTop: '0.5px solid rgba(0,0,0,0.08)', background: '#f8f7f4', flexShrink: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: addDocError ? 10 : 0 }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 11, fontWeight: 500, color: '#5F5E5A', marginBottom: 4 }}>Place in annex</div>
+                    <select
+                      value={selectedAnnex}
+                      onChange={e => setSelectedAnnex(e.target.value)}
+                      style={{ width: '100%', height: 32, padding: '0 8px', fontSize: 13, border: '0.5px solid rgba(0,0,0,0.2)', borderRadius: 8, background: '#fff', cursor: 'pointer' }}
+                    >
+                      {ANNEXES.map(a => <option key={a} value={a}>{a}</option>)}
+                    </select>
+                  </div>
+                  <div style={{ flexShrink: 0, paddingTop: 18 }}>
+                    <button
+                      onClick={addDoc}
+                      disabled={savingDoc}
+                      style={{ height: 32, padding: '0 16px', fontSize: 13, background: '#185FA5', border: 'none', borderRadius: 8, color: '#fff', cursor: savingDoc ? 'default' : 'pointer', opacity: savingDoc ? 0.7 : 1 }}
+                    >{savingDoc ? 'Adding…' : 'Add to list'}</button>
+                  </div>
+                </div>
+                {addDocError && (
+                  <div style={{ fontSize: 12, color: '#7C1C0C', marginTop: 8, padding: '6px 10px', background: '#FDECEA', borderRadius: 6 }}>{addDocError}</div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── New list modal ── */}
       {showNewList && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: 20 }}>
           <div style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 420, border: '0.5px solid rgba(0,0,0,0.15)', overflow: 'hidden' }}>
             <div style={{ padding: '14px 20px', borderBottom: '0.5px solid rgba(0,0,0,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <h3 style={{ fontSize: 14, fontWeight: 500 }}>New document list</h3>
+              <h3 style={{ fontSize: 14, fontWeight: 500 }}>New TF structure</h3>
               <button onClick={() => setShowNewList(false)} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#6b6a64' }}>×</button>
             </div>
             <div style={{ padding: 20 }}>
               <div style={{ marginBottom: 12 }}>
-                <label style={{ display: 'block', fontSize: 12, color: '#6b6a64', marginBottom: 4 }}>List name *</label>
+                <label style={{ display: 'block', fontSize: 12, color: '#6b6a64', marginBottom: 4 }}>Name *</label>
                 <input value={newListName} onChange={e => setNewListName(e.target.value)} placeholder="e.g. Class IIb Combination Device"
                   style={{ width: '100%', padding: '7px 10px', fontSize: 13, border: '0.5px solid rgba(0,0,0,0.2)', borderRadius: 8, outline: 'none' }} />
               </div>
               <div style={{ marginBottom: 12 }}>
                 <label style={{ display: 'block', fontSize: 12, color: '#6b6a64', marginBottom: 4 }}>Description</label>
-                <input value={newListDesc} onChange={e => setNewListDesc(e.target.value)} placeholder="When to use this list"
+                <input value={newListDesc} onChange={e => setNewListDesc(e.target.value)} placeholder="When to use this structure"
                   style={{ width: '100%', padding: '7px 10px', fontSize: 13, border: '0.5px solid rgba(0,0,0,0.2)', borderRadius: 8, outline: 'none' }} />
               </div>
               <div>
                 <label style={{ display: 'block', fontSize: 12, color: '#6b6a64', marginBottom: 4 }}>Start from</label>
                 <select value={cloneFrom} onChange={e => setCloneFrom(e.target.value)}
                   style={{ width: '100%', padding: '7px 10px', fontSize: 13, border: '0.5px solid rgba(0,0,0,0.2)', borderRadius: 8, outline: 'none', background: '#fff' }}>
-                  <option value="">Blank list</option>
+                  <option value="">Blank structure</option>
                   {lists.map(l => <option key={l.id} value={l.id}>Clone "{l.name}"</option>)}
                 </select>
               </div>
@@ -285,7 +437,7 @@ export default function ListsPage() {
             <div style={{ padding: '12px 20px', borderTop: '0.5px solid rgba(0,0,0,0.08)', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
               <button onClick={() => setShowNewList(false)} style={{ height: 32, padding: '0 14px', fontSize: 13, background: 'transparent', border: '0.5px solid rgba(0,0,0,0.2)', borderRadius: 8, cursor: 'pointer' }}>Cancel</button>
               <button onClick={createList} disabled={savingList} style={{ height: 32, padding: '0 14px', fontSize: 13, background: savingList ? '#B5D4F4' : '#185FA5', border: 'none', borderRadius: 8, color: '#fff', cursor: 'pointer' }}>
-                {savingList ? 'Creating...' : 'Create list'}
+                {savingList ? 'Creating...' : 'Create structure'}
               </button>
             </div>
           </div>

@@ -58,3 +58,24 @@ export async function PATCH(
 
   return NextResponse.json({ ok: true })
 }
+
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  const session = await getSession()
+  if (!session || session.role !== 'admin') {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+
+  const project = await queryOne(
+    `SELECT id, name FROM projects WHERE id = $1::uuid`,
+    [params.id]
+  )
+  if (!project) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+  // Cascade deletes project_documents, project_members, project_variables via FK ON DELETE CASCADE
+  await query(`DELETE FROM projects WHERE id = $1::uuid`, [params.id])
+
+  return NextResponse.json({ ok: true })
+}

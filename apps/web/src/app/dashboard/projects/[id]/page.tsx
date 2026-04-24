@@ -21,6 +21,29 @@ const PROJ_STATUS: Record<string, {bg:string;color:string;border:string;label:st
   archived: {bg:'#F1EFE8',color:'#888780',border:'#D3D1C7',label:'Archived'},
 }
 
+const ROLE_STYLES: Record<string, {bg:string;color:string;border:string}> = {
+  admin:      {bg:'#EEEDFE',color:'#3C3489',border:'#AFA9EC'},
+  consultant: {bg:'#E6F1FB',color:'#0C447C',border:'#85B7EB'},
+  client:     {bg:'#EAF3DE',color:'#27500A',border:'#97C459'},
+}
+
+interface Member {
+  id: string
+  user_id: string
+  name: string
+  email: string
+  user_role: string
+  role: string
+  joined_at: string
+}
+
+interface User {
+  id: string
+  name: string
+  email: string
+  role: string
+}
+
 export default function ProjectDetailPage() {
   const params = useParams()
   const router = useRouter()
@@ -28,6 +51,7 @@ export default function ProjectDetailPage() {
 
   const [project, setProject] = useState<any>(null)
   const [docs, setDocs] = useState<any[]>([])
+  const [members, setMembers] = useState<Member[]>([])
   const [loading, setLoading] = useState(true)
   const [activeAnnex, setActiveAnnex] = useState('Annex I')
   const [editMode, setEditMode] = useState(false)
@@ -35,6 +59,13 @@ export default function ProjectDetailPage() {
   const [newDocName, setNewDocName] = useState('')
   const [newDocCode, setNewDocCode] = useState('')
   const [addingDoc, setAddingDoc] = useState(false)
+
+  // Members
+  const [showAddMember, setShowAddMember] = useState(false)
+  const [userSearch, setUserSearch] = useState('')
+  const [userResults, setUserResults] = useState<User[]>([])
+  const [searchingUsers, setSearchingUsers] = useState(false)
+  const [addingMember, setAddingMember] = useState(false)
 
   async function load() {
     const res = await fetch(`/api/projects/${id}`)
@@ -45,7 +76,52 @@ export default function ProjectDetailPage() {
     setLoading(false)
   }
 
-  useEffect(() => { load() }, [id])
+  async function loadMembers() {
+    const res = await fetch(`/api/projects/${id}/members`)
+    if (res.ok) setMembers(await res.json())
+  }
+
+  useEffect(() => { load(); loadMembers() }, [id])
+
+  // Search users
+  useEffect(() => {
+    if (!userSearch.trim()) { setUserResults([]); return }
+    const t = setTimeout(async () => {
+      setSearchingUsers(true)
+      try {
+        const res = await fetch(`/api/users?search=${encodeURIComponent(userSearch)}`)
+        if (res.ok) {
+          const all = await res.json()
+          // Filter out already members
+          const memberIds = new Set(members.map(m => m.user_id))
+          setUserResults(all.filter((u: User) => !memberIds.has(u.id)))
+        }
+      } finally {
+        setSearchingUsers(false)
+      }
+    }, 300)
+    return () => clearTimeout(t)
+  }, [userSearch, members])
+
+  async function addMember(user: User) {
+    setAddingMember(true)
+    await fetch(`/api/projects/${id}/members`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: user.id, role: 'editor' }),
+    })
+    setUserSearch('')
+    setUserResults([])
+    setShowAddMember(false)
+    setAddingMember(false)
+    loadMembers()
+  }
+
+  async function removeMember(userId: string) {
+    if (!confirm('Remove this member from the project?')) return
+    await fetch(`/api/projects/${id}/members?user_id=${userId}`, { method: 'DELETE' })
+    loadMembers()
+  }
 
   async function updateDocStatus(docId: string, status: string) {
     await fetch(`/api/projects/${id}/documents/${docId}`, {
@@ -104,6 +180,7 @@ export default function ProjectDetailPage() {
         <span style={{color:'#1a1a18'}}>{project.name}</span>
       </div>
 
+      {/* Project header */}
       <div style={{background:'#fff',border:'0.5px solid rgba(0,0,0,0.1)',borderRadius:12,padding:'16px 20px',marginBottom:14}}>
         <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:12,marginBottom:12}}>
           <div>
@@ -153,6 +230,111 @@ export default function ProjectDetailPage() {
         </div>
       </div>
 
+      {/* Members section */}
+      <div style={{background:'#fff',border:'0.5px solid rgba(0,0,0,0.1)',borderRadius:12,padding:'14px 20px',marginBottom:14}}>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12}}>
+          <div style={{fontSize:13,fontWeight:500}}>Members</div>
+          <button
+            onClick={() => setShowAddMember(v => !v)}
+            style={{height:26,padding:'0 10px',fontSize:11,background:'#185FA5',border:'none',borderRadius:6,color:'#fff',cursor:'pointer'}}
+          >+ Add member</button>
+        </div>
+
+        {/* Add member search */}
+        {showAddMember && (
+          <div style={{marginBottom:12,position:'relative'}}>
+            <input
+              value={userSearch}
+              onChange={e => setUserSearch(e.target.value)}
+              placeholder="Search by name or email…"
+              autoFocus
+              style={{
+                width:'100%',height:32,padding:'0 10px',fontSize:12,
+                border:'0.5px solid rgba(0,0,0,0.2)',borderRadius:8,
+                outline:'none',boxSizing:'border-box' as const,
+              }}
+            />
+            {searchingUsers && (
+              <div style={{fontSize:11,color:'#9b9991',padding:'6px 0'}}>Searching…</div>
+            )}
+            {userResults.length > 0 && (
+              <div style={{
+                position:'absolute',top:36,left:0,right:0,zIndex:20,
+                background:'#fff',border:'0.5px solid rgba(0,0,0,0.15)',
+                borderRadius:8,boxShadow:'0 4px 16px rgba(0,0,0,0.1)',overflow:'hidden',
+              }}>
+                {userResults.map(u => {
+                  const rs = ROLE_STYLES[u.role] || ROLE_STYLES.client
+                  return (
+                    <div
+                      key={u.id}
+                      onClick={() => !addingMember && addMember(u)}
+                      style={{
+                        padding:'9px 12px',cursor:'pointer',
+                        display:'flex',alignItems:'center',gap:10,
+                        borderBottom:'0.5px solid rgba(0,0,0,0.06)',
+                        background:'#fff',
+                      }}
+                      onMouseEnter={e => (e.currentTarget.style.background = '#f8f7f4')}
+                      onMouseLeave={e => (e.currentTarget.style.background = '#fff')}
+                    >
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:12,fontWeight:500}}>{u.name}</div>
+                        <div style={{fontSize:11,color:'#9b9991'}}>{u.email}</div>
+                      </div>
+                      <span style={{
+                        fontSize:10,padding:'1px 6px',borderRadius:3,
+                        background:rs.bg,color:rs.color,border:`0.5px solid ${rs.border}`,
+                      }}>{u.role}</span>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+            {userSearch && !searchingUsers && userResults.length === 0 && (
+              <div style={{fontSize:11,color:'#9b9991',padding:'6px 0'}}>No users found.</div>
+            )}
+          </div>
+        )}
+
+        {/* Member list */}
+        {members.length === 0 ? (
+          <div style={{fontSize:12,color:'#9b9991'}}>No members yet. Add team members to collaborate on this project.</div>
+        ) : (
+          <div style={{display:'flex',flexWrap:'wrap' as const,gap:8}}>
+            {members.map(m => {
+              const rs = ROLE_STYLES[m.user_role] || ROLE_STYLES.client
+              return (
+                <div key={m.id} style={{
+                  display:'flex',alignItems:'center',gap:7,
+                  padding:'5px 10px',borderRadius:20,
+                  background:'#f8f7f4',border:'0.5px solid rgba(0,0,0,0.1)',
+                }}>
+                  <div style={{
+                    width:22,height:22,borderRadius:'50%',flexShrink:0,
+                    background:rs.bg,color:rs.color,border:`0.5px solid ${rs.border}`,
+                    display:'flex',alignItems:'center',justifyContent:'center',
+                    fontSize:9,fontWeight:600,
+                  }}>
+                    {m.name.split(' ').map((n:string) => n[0]).join('').toUpperCase().slice(0,2)}
+                  </div>
+                  <div>
+                    <div style={{fontSize:11,fontWeight:500}}>{m.name}</div>
+                    <div style={{fontSize:10,color:'#9b9991'}}>{m.user_role}</div>
+                  </div>
+                  <button
+                    onClick={() => removeMember(m.user_id)}
+                    style={{background:'none',border:'none',color:'#9b9991',cursor:'pointer',fontSize:14,lineHeight:1,padding:'0 2px',marginLeft:2}}
+                    title="Remove member"
+                  >×</button>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Annex + docs grid */}
       <div style={{display:'grid',gridTemplateColumns:'176px minmax(0,1fr)',gap:14}}>
         <div style={{border:'0.5px solid rgba(0,0,0,0.1)',borderRadius:12,overflow:'hidden'}}>
           {ANNEXES.map(a => (
@@ -191,8 +373,13 @@ export default function ProjectDetailPage() {
             </div>
           ) : annexDocs.map((d:any) => {
             const s = DOC_STATUS[d.status] || DOC_STATUS.draft
+            const isReview = d.status === 'review'
             return (
-              <div key={d.id} style={{padding:'11px 14px',borderBottom:'0.5px solid rgba(0,0,0,0.06)',display:'flex',alignItems:'center',gap:10}}>
+              <div key={d.id} style={{
+                padding:'11px 14px',borderBottom:'0.5px solid rgba(0,0,0,0.06)',
+                display:'flex',alignItems:'center',gap:10,
+                background: isReview ? '#FFFBF5' : '#fff',
+              }}>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontSize:13,fontWeight:500,whiteSpace:'nowrap' as const,overflow:'hidden',textOverflow:'ellipsis'}}>{d.name}</div>
                   <div style={{fontSize:11,color:'#9b9991',fontFamily:'monospace',marginTop:1}}>{d.code}</div>
@@ -210,7 +397,9 @@ export default function ProjectDetailPage() {
                       <button onClick={() => deleteDoc(d.id)} style={{height:26,padding:'0 8px',fontSize:11,background:'#FCEBEB',border:'0.5px solid #F09595',borderRadius:6,color:'#A32D2D',cursor:'pointer'}}>Remove</button>
                     </>
                   ) : (
-                    <span style={{fontSize:11,padding:'2px 8px',borderRadius:4,background:s.bg,color:s.color,border:`0.5px solid ${s.border}`}}>{s.label}</span>
+                    <span style={{fontSize:11,padding:'2px 8px',borderRadius:4,background:s.bg,color:s.color,border:`0.5px solid ${s.border}`}}>
+                      {isReview ? '⏳ ' : ''}{s.label}
+                    </span>
                   )}
                   <Link href={`/dashboard/projects/${id}/documents/${d.id}`} style={{height:26,padding:'0 10px',fontSize:11,background:'#E6F1FB',border:'0.5px solid #85B7EB',borderRadius:6,color:'#185FA5',textDecoration:'none',display:'inline-flex',alignItems:'center'}}>
                     Open

@@ -92,6 +92,7 @@ export async function POST(req: NextRequest) {
   const list = await queryOne('SELECT id FROM document_lists WHERE id = $1', [list_id])
   if (!list) return NextResponse.json({ error: 'Invalid list' }, { status: 400 })
 
+  // Create project
   const [project] = await query<{ id: string }>(`
     INSERT INTO projects (
       name, device_name, description,
@@ -107,13 +108,19 @@ export async function POST(req: NextRequest) {
     list_id, session.id,
   ])
 
+  // Add creator as member
   await query(
     'INSERT INTO project_members (project_id, user_id, role) VALUES ($1, $2, $3)',
     [project.id, session.id, session.role]
   )
 
+  // Load list documents with their template info
   const listDocs = await query<{
-    id: string, annex: string, name: string, code: string, template_id: string
+    id: string
+    annex: string
+    name: string
+    code: string
+    template_id: string | null
   }>(`
     SELECT id, annex, name, code, template_id
     FROM list_documents
@@ -122,19 +129,39 @@ export async function POST(req: NextRequest) {
   `, [list_id])
 
   if (listDocs.length > 0) {
-    const values = listDocs.map((d, i) => {
-      const base = i * 5
-      return `($${base+1},$${base+2},$${base+3},$${base+4},$${base+5})`
-    }).join(',')
+    // For each doc, fetch the current template version content if template is linked
+    for (const d of listDocs) {
+      let content = {}
+      let templateVersionId = null
 
-    const params = listDocs.flatMap(d => [
-      project.id, d.annex, d.name, d.code, 'draft'
-    ])
+      if (d.template_id) {
+        const tv = await queryOne<{ id: string; content: any }>(`
+          SELECT id, content
+          FROM template_versions
+          WHERE template_id = $1::uuid AND is_current = TRUE
+          LIMIT 1
+        `, [d.template_id])
 
-    await query(`
-      INSERT INTO project_documents (project_id, annex, name, code, status)
-      VALUES ${values}
-    `, params)
+        if (tv) {
+          content = tv.content ?? {}
+          templateVersionId = tv.id
+        }
+      }
+
+      await query(`
+        INSERT INTO project_documents
+          (project_id, annex, name, code, status, content, template_version_id)
+        VALUES
+          ($1::uuid, $2, $3, $4, 'draft', $5, $6)
+      `, [
+        project.id,
+        d.annex,
+        d.name,
+        d.code,
+        JSON.stringify(content),
+        templateVersionId,
+      ])
+    }
   }
 
   return NextResponse.json({ ok: true, id: project.id }, { status: 201 })

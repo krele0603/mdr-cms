@@ -46,6 +46,11 @@ export default function ProjectsPage() {
   const [saving, setSaving] = useState(false)
   const [filterStatus, setFilterStatus] = useState('')
 
+  // Delete confirm
+  const [deleteTarget, setDeleteTarget] = useState<Project | null>(null)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+
   async function load() {
     const [pr, lr] = await Promise.all([
       fetch('/api/projects').then(r => r.json()),
@@ -57,6 +62,25 @@ export default function ProjectsPage() {
   }
 
   useEffect(() => { load() }, [])
+
+  async function handleDelete() {
+    if (!deleteTarget) return
+    setDeleting(true)
+    setDeleteError(null)
+    try {
+      const res = await fetch(`/api/projects/${deleteTarget.id}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const d = await res.json()
+        throw new Error(d.error || 'Failed to delete')
+      }
+      setDeleteTarget(null)
+      load()
+    } catch (e: any) {
+      setDeleteError(e.message)
+    } finally {
+      setDeleting(false)
+    }
+  }
 
   async function handleSave() {
     setFormError('')
@@ -102,7 +126,8 @@ export default function ProjectsPage() {
           <h1 style={{ fontSize: 22, fontWeight: 500, marginBottom: 2 }}>Projects</h1>
           <p style={{ fontSize: 13, color: '#6b6a64' }}>MDR technical file projects</p>
         </div>
-        <button onClick={() => { setForm(EMPTY_FORM); setFormError(''); setShowModal(true) }} style={{ height: 32, padding: '0 14px', fontSize: 13, background: '#185FA5', border: '0.5px solid #185FA5', borderRadius: 8, color: '#fff', cursor: 'pointer' }}>
+        <button onClick={() => { setForm(EMPTY_FORM); setFormError(''); setShowModal(true) }}
+          style={{ height: 32, padding: '0 14px', fontSize: 13, background: '#185FA5', border: '0.5px solid #185FA5', borderRadius: 8, color: '#fff', cursor: 'pointer' }}>
           + New project
         </button>
       </div>
@@ -114,7 +139,8 @@ export default function ProjectsPage() {
           { label: 'Under review', val: counts.review, f: 'review', color: '#854F0B' },
           { label: 'Approved', val: counts.approved, f: 'approved', color: '#3B6D11' },
         ].map(s => (
-          <div key={s.f} onClick={() => setFilterStatus(s.f === filterStatus ? '' : s.f)} style={{ background: filterStatus === s.f ? '#E6F1FB' : '#f8f7f4', border: filterStatus === s.f ? '2px solid #185FA5' : '0.5px solid rgba(0,0,0,0.1)', borderRadius: 10, padding: '11px 14px', cursor: 'pointer' }}>
+          <div key={s.f} onClick={() => setFilterStatus(s.f === filterStatus ? '' : s.f)}
+            style={{ background: filterStatus === s.f ? '#E6F1FB' : '#f8f7f4', border: filterStatus === s.f ? '2px solid #185FA5' : '0.5px solid rgba(0,0,0,0.1)', borderRadius: 10, padding: '11px 14px', cursor: 'pointer' }}>
             <div style={{ fontSize: 12, color: '#6b6a64', marginBottom: 3 }}>{s.label}</div>
             <div style={{ fontSize: 22, fontWeight: 500, color: s.color }}>{s.val}</div>
           </div>
@@ -161,7 +187,7 @@ export default function ProjectsPage() {
                         <div style={{ flex: 1, height: 4, background: '#f1efe8', borderRadius: 2, overflow: 'hidden' }}>
                           <div style={{ width: `${pct}%`, height: '100%', background: pct === 100 ? '#3B6D11' : '#185FA5', borderRadius: 2 }} />
                         </div>
-                        <span style={{ fontSize: 11, color: '#9b9991', whiteSpace: 'nowrap' }}>{done}/{total}</span>
+                        <span style={{ fontSize: 11, color: '#9b9991', whiteSpace: 'nowrap' as const }}>{done}/{total}</span>
                       </div>
                     </td>
                     <td style={{ padding: '11px 14px' }}>
@@ -171,7 +197,16 @@ export default function ProjectsPage() {
                       {new Date(p.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' })}
                     </td>
                     <td style={{ padding: '11px 14px', textAlign: 'right' }}>
-                      <Link href={`/dashboard/projects/${p.id}`} style={{ fontSize: 12, color: '#185FA5', textDecoration: 'none', padding: '4px 10px', border: '0.5px solid #85B7EB', borderRadius: 6, background: '#E6F1FB' }}>Open</Link>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'flex-end' }}>
+                        <Link href={`/dashboard/projects/${p.id}`}
+                          style={{ fontSize: 12, color: '#185FA5', textDecoration: 'none', padding: '4px 10px', border: '0.5px solid #85B7EB', borderRadius: 6, background: '#E6F1FB' }}>
+                          Open
+                        </Link>
+                        <button
+                          onClick={() => { setDeleteTarget(p); setDeleteError(null) }}
+                          style={{ fontSize: 12, color: '#A32D2D', padding: '4px 8px', border: '0.5px solid #F09595', borderRadius: 6, background: '#FCEBEB', cursor: 'pointer' }}
+                        >Delete</button>
+                      </div>
                     </td>
                   </tr>
                 )
@@ -181,6 +216,56 @@ export default function ProjectsPage() {
         )}
       </div>
 
+      {/* ── Delete confirm modal ── */}
+      {deleteTarget && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100,
+        }} onClick={() => !deleting && setDeleteTarget(null)}>
+          <div style={{
+            background: '#fff', borderRadius: 14, padding: 28, width: 420,
+            border: '0.5px solid rgba(0,0,0,0.12)', boxShadow: '0 8px 32px rgba(0,0,0,0.14)',
+          }} onClick={e => e.stopPropagation()}>
+            <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 8, color: '#1a1a18' }}>
+              Delete project?
+            </div>
+            <div style={{ fontSize: 13, color: '#5F5E5A', marginBottom: 6, lineHeight: 1.5 }}>
+              You are about to permanently delete:
+            </div>
+            <div style={{
+              background: '#FDECEA', border: '0.5px solid #EB8585',
+              borderRadius: 8, padding: '10px 14px', marginBottom: 18,
+            }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#7C1C0C' }}>{deleteTarget.name}</div>
+              <div style={{ fontSize: 12, color: '#A32D2D', marginTop: 2 }}>{deleteTarget.device_name}</div>
+            </div>
+            <div style={{ fontSize: 12, color: '#7C1C0C', marginBottom: 20, lineHeight: 1.6 }}>
+              This will permanently delete the project and <strong>all its records</strong>. This action cannot be undone.
+            </div>
+
+            {deleteError && (
+              <div style={{ fontSize: 12, color: '#7C1C0C', marginBottom: 12, padding: '8px 10px', background: '#FDECEA', borderRadius: 6 }}>
+                {deleteError}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button
+                onClick={() => setDeleteTarget(null)}
+                disabled={deleting}
+                style={{ height: 32, padding: '0 14px', fontSize: 13, cursor: 'pointer', background: 'none', border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 8, color: '#5F5E5A' }}
+              >Cancel</button>
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                style={{ height: 32, padding: '0 14px', fontSize: 13, cursor: deleting ? 'default' : 'pointer', background: '#C0392B', border: 'none', borderRadius: 8, color: '#fff', opacity: deleting ? 0.7 : 1 }}
+              >{deleting ? 'Deleting…' : 'Yes, delete project'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Create modal ── */}
       {showModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: 20 }}>
           <div style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 500, border: '0.5px solid rgba(0,0,0,0.15)', overflow: 'hidden', maxHeight: '90vh', overflowY: 'auto' }}>
@@ -190,14 +275,14 @@ export default function ProjectsPage() {
             </div>
             <div style={{ padding: 20 }}>
               {formError && <div style={{ background: '#FCEBEB', border: '0.5px solid #F09595', borderRadius: 8, padding: '8px 12px', fontSize: 12, color: '#A32D2D', marginBottom: 14 }}>{formError}</div>}
-              <div style={{ fontSize: 11, fontWeight: 500, color: '#6b6a64', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>Client / manufacturer</div>
+              <div style={{ fontSize: 11, fontWeight: 500, color: '#6b6a64', textTransform: 'uppercase' as const, letterSpacing: '0.05em', marginBottom: 10 }}>Client / manufacturer</div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
                 {input('Manufacturer name *', 'manufacturer_name', 'e.g. Acme Medical GmbH')}
                 {input('Country', 'manufacturer_country', 'e.g. Germany')}
                 {input('Contact person', 'manufacturer_contact', 'e.g. Jane Smith')}
                 {input('Email', 'manufacturer_email', 'jane@acme.com', 'email')}
               </div>
-              <div style={{ fontSize: 11, fontWeight: 500, color: '#6b6a64', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '16px 0 10px' }}>Device & project</div>
+              <div style={{ fontSize: 11, fontWeight: 500, color: '#6b6a64', textTransform: 'uppercase' as const, letterSpacing: '0.05em', margin: '16px 0 10px' }}>Device & project</div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
                 {input('Device name *', 'device_name', 'e.g. CardioMonitor Pro')}
                 {input('Project name *', 'name', 'e.g. CardioMonitor MDR TF')}

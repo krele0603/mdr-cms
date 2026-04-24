@@ -6,11 +6,15 @@ export async function GET(req: NextRequest) {
   const session = await getSessionFromRequest(req)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  const { searchParams } = new URL(req.url)
+  const annex = searchParams.get('annex')
+
   const templates = await query(`
     SELECT
       t.id,
       t.name,
       t.tag_code,
+      t.annex,
       t.status,
       t.created_at,
       tv.version,
@@ -25,9 +29,11 @@ export async function GET(req: NextRequest) {
     LEFT JOIN users u ON u.id = t.created_by
     LEFT JOIN list_documents ld ON ld.template_id = t.id
     LEFT JOIN project_documents pd ON pd.template_version_id = tv.id
-    GROUP BY t.id, t.name, t.tag_code, t.status, t.created_at, tv.version, tv.id, tv.change_note, tv.created_at, u.name
+    ${annex ? 'WHERE t.annex = $1' : ''}
+    GROUP BY t.id, t.name, t.tag_code, t.annex, t.status, t.created_at,
+             tv.version, tv.id, tv.change_note, tv.created_at, u.name
     ORDER BY t.name ASC
-  `)
+  `, annex ? [annex] : [])
 
   return NextResponse.json(templates)
 }
@@ -39,13 +45,12 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json()
-  const { name, tag_code } = body
+  const { name, tag_code, annex } = body
 
   if (!name?.trim() || !tag_code?.trim()) {
     return NextResponse.json({ error: 'Name and tag code are required' }, { status: 400 })
   }
 
-  // Check tag_code uniqueness
   const existing = await queryOne(
     `SELECT id FROM templates WHERE tag_code = $1`,
     [tag_code.trim()]
@@ -55,13 +60,12 @@ export async function POST(req: NextRequest) {
   }
 
   const template = await queryOne(
-    `INSERT INTO templates (name, tag_code, status, created_by)
-     VALUES ($1, $2, 'draft', $3::uuid)
-     RETURNING id, name, tag_code, status, created_at`,
-    [name.trim(), tag_code.trim(), session.id]
+    `INSERT INTO templates (name, tag_code, annex, status, created_by)
+     VALUES ($1, $2, $3, 'draft', $4::uuid)
+     RETURNING id, name, tag_code, annex, status, created_at`,
+    [name.trim(), tag_code.trim(), annex || null, session.id]
   )
 
-  // Create initial empty version v1
   await queryOne(
     `INSERT INTO template_versions (template_id, version, content, example_content, change_note, is_current, created_by)
      VALUES ($1::uuid, 'v1', '{}', '{}', 'Initial version', TRUE, $2::uuid)`,
