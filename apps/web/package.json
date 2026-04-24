@@ -1,0 +1,53 @@
+{
+  "name": "mdr-cms-web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "db:migrate": "node scripts/migrate.js"
+  },
+  "dependencies": {
+    "next": "14.2.5",
+    "react": "^18",
+    "react-dom": "^18",
+    "next-auth": "^4.24.7",
+    "@tiptap/react": "^2.4.0",
+    "@tiptap/starter-kit": "^2.4.0",
+    "@tiptap/extension-collaboration": "^2.4.0",
+    "@tiptap/extension-collaboration-cursor": "^2.4.0",
+    "@tiptap/extension-placeholder": "^2.4.0",
+    "@tiptap/extension-underline": "^2.4.0",
+    "@tiptap/extension-table": "^2.4.0",
+    "@tiptap/extension-table-row": "^2.4.0",
+    "@tiptap/extension-table-header": "^2.4.0",
+    "@tiptap/extension-table-cell": "^2.4.0",
+    "@tiptap/extension-highlight": "^2.4.0",
+    "@tiptap/extension-text-align": "^2.4.0",
+    "@tiptap/extension-typography": "^2.4.0",
+    "@tiptap/extension-character-count": "^2.4.0",
+    "y-prosemirror": "^1.2.12",
+    "yjs": "^13.6.18",
+    "pg": "^8.12.0",
+    "bcryptjs": "^2.4.3",
+    "jose": "^5.6.3",
+    "docx": "^8.5.0",
+    "date-fns": "^3.6.0",
+    "clsx": "^2.1.1"
+  },
+  "devDependencies": {
+    "typescript": "^5",
+    "@types/node": "^20",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "@types/pg": "^8.11.6",
+    "@types/bcryptjs": "^2.4.6",
+    "eslint": "^8",
+    "eslint-config-next": "14.2.5",
+    "tailwindcss": "^3.4.1",
+    "autoprefixer": "^10.0.1",
+    "postcss": "^8"
+  }
+}

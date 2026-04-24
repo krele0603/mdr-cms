@@ -1,0 +1,89 @@
+services:
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: mdr_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-mdrcms}
+      POSTGRES_USER: ${POSTGRES_USER:-mdrcms}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - mdr_internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-mdrcms}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: mdr_redis
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    networks:
+      - mdr_internal
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  hocuspocus:
+    image: node:20-alpine
+    container_name: mdr_hocuspocus
+    restart: unless-stopped
+    working_dir: /app
+    volumes:
+      - ./apps/hocuspocus:/app
+    command: sh -c "npm install && node server.js"
+    environment:
+      PORT: 1234
+      REDIS_URL: redis://redis:6379
+    networks:
+      - mdr_internal
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  web:
+    image: mdr-web
+    container_name: mdr_web
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER:-mdrcms}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-mdrcms}
+      REDIS_URL: redis://redis:6379
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+      NEXTAUTH_URL: https://${DOMAIN}
+      HOCUSPOCUS_URL: ws://hocuspocus:1234
+    networks:
+      - mdr_internal
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: mdr_cloudflared
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
+    network_mode: host
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  mdr_internal:
+    driver: bridge

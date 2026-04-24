@@ -1,0 +1,9 @@
+{
+  "name": "mdr-hocuspocus",
+  "version": "0.1.0",
+  "private": true,
+  "dependencies": {
+    "@hocuspocus/server": "^2.13.5",
+    "@hocuspocus/extension-redis": "^2.13.5"
+  }
+}

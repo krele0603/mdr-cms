@@ -1,0 +1,74 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-bg: #ffffff;
+  --color-bg-secondary: #f8f7f4;
+  --color-bg-tertiary: #f1efe8;
+  --color-border: rgba(0,0,0,0.12);
+  --color-border-secondary: rgba(0,0,0,0.22);
+  --color-text: #1a1a18;
+  --color-text-secondary: #6b6a64;
+  --color-text-tertiary: #9b9991;
+  --color-brand: #185FA5;
+  --color-brand-dark: #0C447C;
+  --color-success: #3B6D11;
+  --color-warning: #854F0B;
+  --color-danger: #A32D2D;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: Inter, system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  color: var(--color-text);
+  background: var(--color-bg-tertiary);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* TipTap editor styles */
+.tiptap {
+  outline: none;
+  min-height: 400px;
+}
+
+.tiptap h1 { font-size: 22px; font-weight: 500; margin-bottom: 16px; margin-top: 8px; }
+.tiptap h2 { font-size: 16px; font-weight: 500; margin-bottom: 10px; margin-top: 20px; }
+.tiptap h3 { font-size: 14px; font-weight: 500; margin-bottom: 8px; margin-top: 16px; }
+.tiptap p  { font-size: 13px; line-height: 1.8; margin-bottom: 10px; }
+.tiptap ul, .tiptap ol { margin: 8px 0 10px 20px; font-size: 13px; line-height: 1.8; }
+.tiptap table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 12px; }
+.tiptap th { background: var(--color-bg-secondary); padding: 7px 10px; border: 0.5px solid var(--color-border-secondary); font-weight: 500; text-align: left; }
+.tiptap td { padding: 7px 10px; border: 0.5px solid var(--color-border-secondary); vertical-align: top; }
+.tiptap p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: var(--color-text-tertiary);
+  float: left;
+  height: 0;
+  pointer-events: none;
+  font-style: italic;
+}
+
+/* Variable highlights */
+.tiptap .variable-tag {
+  background: #E6F1FB;
+  color: #185FA5;
+  border: 0.5px solid #85B7EB;
+  border-radius: 3px;
+  padding: 0 4px;
+  font-family: monospace;
+  font-size: 12px;
+}
+.tiptap .variable-tag.undefined {
+  background: #FAEEDA;
+  color: #854F0B;
+  border-color: #FAC775;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-thumb { background: var(--color-border-secondary); border-radius: 2px; }
