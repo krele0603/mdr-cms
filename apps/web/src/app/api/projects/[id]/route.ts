@@ -14,6 +14,11 @@ export async function GET(
       p.manufacturer_name, p.manufacturer_country,
       p.manufacturer_contact, p.manufacturer_email,
       p.status, p.created_at,
+      p.header_logo_url,
+      p.footer_show_version,
+      p.footer_show_date,
+      p.footer_show_page_numbers,
+      p.footer_confidentiality,
       dl.name as list_name,
       u.name as created_by_name
     FROM projects p
@@ -44,8 +49,18 @@ export async function PATCH(
   }
 
   const body = await req.json()
-  const allowed = ['name', 'device_name', 'description', 'manufacturer_name',
-    'manufacturer_country', 'manufacturer_contact', 'manufacturer_email', 'status']
+  const allowed = [
+    'name', 'device_name', 'description',
+    'manufacturer_name', 'manufacturer_country',
+    'manufacturer_contact', 'manufacturer_email',
+    'status',
+    // Document settings
+    'header_logo_url',
+    'footer_show_version',
+    'footer_show_date',
+    'footer_show_page_numbers',
+    'footer_confidentiality',
+  ]
 
   for (const [key, val] of Object.entries(body)) {
     if (allowed.includes(key)) {
@@ -74,7 +89,6 @@ export async function DELETE(
   )
   if (!project) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  // Cascade deletes project_documents, project_members, project_variables via FK ON DELETE CASCADE
   await query(`DELETE FROM projects WHERE id = $1::uuid`, [params.id])
 
   return NextResponse.json({ ok: true })

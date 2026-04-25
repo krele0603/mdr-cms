@@ -2,8 +2,7 @@
 const nextConfig = {
   output: 'standalone',
   experimental: {
-    serverComponentsExternalPackages: ['pg', 'bcryptjs'],
-  },
+    serverComponentsExternalPackages: ['pg', 'bcryptjs', 'docx'],
+  }
 }
-
 module.exports = nextConfig

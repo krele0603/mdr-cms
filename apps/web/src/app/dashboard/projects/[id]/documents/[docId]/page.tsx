@@ -434,6 +434,7 @@ export default function DocumentEditorPage() {
   const [hasExample, setHasExample] = useState(false)
   const [userRole, setUserRole] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [exporting, setExporting] = useState(false)
   const [wordCount, setWordCount] = useState(0)
   const [sizes, setSizes] = useState(DEFAULT_SIZES)
   const [tocItems, setTocItems] = useState<TocItem[]>([])
@@ -479,6 +480,26 @@ export default function DocumentEditorPage() {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status }),
     })
+  }
+
+  
+  async function exportDoc(fmt: 'docx') {
+    setExporting(true)
+    try {
+      const res = await fetch(`/api/projects/${projectId}/documents/${docId}/export?format=${fmt}`)
+      if (!res.ok) throw new Error('Export failed')
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = res.headers.get('Content-Disposition')?.match(/filename="(.+)"/)?.[1] || `document.${fmt}`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (e: any) {
+      alert('Export failed: ' + e.message)
+    } finally {
+      setExporting(false)
+    }
   }
 
   async function submitForReview() {
@@ -590,6 +611,23 @@ export default function DocumentEditorPage() {
           {isClient && isApproved && <span style={{ fontSize: 12, color: '#3a7a5a', fontWeight: 500 }}>✓ Approved</span>}
           <button onClick={() => setShowReference(v => !v)} style={{ height: 28, padding: '0 12px', fontSize: 12, cursor: 'pointer', background: showReference ? 'rgba(78,140,140,0.1)' : 'transparent', border: showReference ? '0.5px solid rgba(78,140,140,0.4)' : '0.5px solid rgba(0,0,0,0.15)', borderRadius: 6, color: showReference ? '#2e5f5f' : '#5a6472', fontWeight: 500 }}>
             {showReference ? 'Hide example' : 'Show example'}
+          </button>
+
+          {/* Export button */}
+          <button
+            onClick={() => exportDoc('docx')}
+            disabled={exporting}
+            style={{
+              height: 28, padding: '0 12px', fontSize: 12, cursor: exporting ? 'default' : 'pointer',
+              background: 'transparent',
+              border: '0.5px solid rgba(0,0,0,0.15)',
+              borderRadius: 6, color: '#5a6472',
+              opacity: exporting ? 0.6 : 1,
+              display: 'flex', alignItems: 'center', gap: 5,
+            }}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            {exporting ? 'Exporting…' : 'Export DOCX'}
           </button>
         </div>
       </div>
