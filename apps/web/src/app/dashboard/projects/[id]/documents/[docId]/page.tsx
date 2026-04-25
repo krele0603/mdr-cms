@@ -14,97 +14,355 @@ import TableHeader from '@tiptap/extension-table-header'
 import TableCell from '@tiptap/extension-table-cell'
 import Placeholder from '@tiptap/extension-placeholder'
 import CharacterCount from '@tiptap/extension-character-count'
+import FontFamily from '@tiptap/extension-font-family'
+import TextStyle from '@tiptap/extension-text-style'
+
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 interface DocData {
-  id: string
-  project_id: string
-  annex: string
-  name: string
-  code: string
-  content: any
-  status: string
-  updated_at: string
-  template_version_id: string | null
-  template_version: string | null
-  example_content: any
-  template_name: string | null
-  tag_code: string | null
-  project_name: string
-  device_name: string
+  id: string; project_id: string; annex: string; name: string; code: string
+  content: any; status: string; updated_at: string
+  template_version_id: string | null; template_version: string | null
+  example_content: any; template_name: string | null
+  tag_code: string | null; project_name: string; device_name: string
 }
 
 type SaveState = 'saved' | 'saving' | 'unsaved' | 'error'
 
 const DOC_STATUS: Record<string, { bg: string; color: string; border: string; label: string }> = {
-  draft:      { bg: '#F1EFE8', color: '#5F5E5A', border: '#D3D1C7', label: 'Draft' },
-  inprogress: { bg: '#FAEEDA', color: '#633806', border: '#FAC775', label: 'In progress' },
-  review:     { bg: '#E6F1FB', color: '#0C447C', border: '#85B7EB', label: 'In review' },
-  approved:   { bg: '#EAF3DE', color: '#27500A', border: '#97C459', label: 'Approved' },
+  draft:      { bg: '#f5f2ee', color: '#5a6472', border: 'rgba(90,100,114,0.3)', label: 'Draft' },
+  inprogress: { bg: 'rgba(200,169,110,0.12)', color: '#8a6020', border: 'rgba(200,169,110,0.4)', label: 'In progress' },
+  review:     { bg: 'rgba(78,140,140,0.1)', color: '#2e5f5f', border: 'rgba(78,140,140,0.3)', label: 'In review' },
+  approved:   { bg: 'rgba(58,122,90,0.1)', color: '#3a7a5a', border: 'rgba(58,122,90,0.3)', label: 'Approved' },
 }
 
-function ToolBtn({ active, disabled, onClick, title, children }: {
-  active?: boolean; disabled?: boolean; onClick: () => void; title: string; children: React.ReactNode
+const DEFAULT_SIZES = { p: 14, h1: 26, h2: 20, h3: 15, h4: 14 }
+
+const FONTS = [
+  { label: 'DM Sans',             value: "'DM Sans', sans-serif" },
+  { label: 'Cormorant Garamond',  value: "'Cormorant Garamond', serif" },
+  { label: 'Georgia',             value: 'Georgia, serif' },
+  { label: 'Times New Roman',     value: "'Times New Roman', serif" },
+  { label: 'Arial',               value: 'Arial, sans-serif' },
+  { label: 'Helvetica',           value: 'Helvetica, Arial, sans-serif' },
+  { label: 'Courier New',         value: "'Courier New', monospace" },
+]
+
+// ── Icons ─────────────────────────────────────────────────────────────────────
+
+const I = {
+  Bold:        () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M6 4h8a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"/><path d="M6 12h9a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"/></svg>,
+  Italic:      () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="19" y1="4" x2="10" y2="4"/><line x1="14" y1="20" x2="5" y2="20"/><line x1="15" y1="4" x2="9" y2="20"/></svg>,
+  Underline:   () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M6 3v7a6 6 0 0 0 6 6 6 6 0 0 0 6-6V3"/><line x1="4" y1="21" x2="20" y2="21"/></svg>,
+  Strike:      () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="5" y1="12" x2="19" y2="12"/><path d="M16 6C16 6 14 4 12 4c-2.2 0-4 1.8-4 4 0 1.9 1.3 3 3 3.5"/><path d="M8 18s2 2 4 2c2.2 0 4-1.8 4-4 0-1.9-1.3-3-3-3.5"/></svg>,
+  Highlight:   () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>,
+  BulletList:  () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="9" y1="6" x2="20" y2="6"/><line x1="9" y1="12" x2="20" y2="12"/><line x1="9" y1="18" x2="20" y2="18"/><circle cx="4" cy="6" r="1.5" fill="currentColor" stroke="none"/><circle cx="4" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="4" cy="18" r="1.5" fill="currentColor" stroke="none"/></svg>,
+  OrderedList: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="10" y1="6" x2="21" y2="6"/><line x1="10" y1="12" x2="21" y2="12"/><line x1="10" y1="18" x2="21" y2="18"/><path d="M4 6h1v4M4 10h2" strokeWidth="1.5"/><path d="M6 18H4c0-1 2-2 2-3s-1-1.5-2-1" strokeWidth="1.5"/></svg>,
+  AlignLeft:   () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="15" y2="12"/><line x1="3" y1="18" x2="18" y2="18"/></svg>,
+  AlignCenter: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="6" y1="12" x2="18" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>,
+  AlignRight:  () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="9" y1="12" x2="21" y2="12"/><line x1="6" y1="18" x2="21" y2="18"/></svg>,
+  AlignJust:   () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>,
+  Table:       () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="9" x2="9" y2="21"/><line x1="15" y1="9" x2="15" y2="21"/></svg>,
+  Blockquote:  () => <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M3 21c3 0 7-1 7-8V5c0-1.25-.756-2.017-2-2H4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2 1 0 1 0 1 1v1c0 1-1 2-2 2s-1 .008-1 1.031V20c0 1 0 1 1 1z"/><path d="M15 21c3 0 7-1 7-8V5c0-1.25-.757-2.017-2-2h-4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2h.75c0 2.25.25 4-2.75 4v3c0 1 0 1 1 1z"/></svg>,
+  HRule:       () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="3" y1="12" x2="21" y2="12"/></svg>,
+  Undo:        () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>,
+  Redo:        () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3L21 13"/></svg>,
+  ChevronDown: () => <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="6 9 12 15 18 9"/></svg>,
+}
+
+// ── Shared button ─────────────────────────────────────────────────────────────
+
+function Btn({ active, disabled, onClick, title, children, danger, width }: {
+  active?: boolean; disabled?: boolean; onClick: () => void
+  title: string; children: React.ReactNode; danger?: boolean; width?: number
 }) {
   return (
     <button
-      onMouseDown={e => { e.preventDefault(); onClick() }}
-      disabled={disabled}
-      title={title}
+      onMouseDown={e => { e.preventDefault(); if (!disabled) onClick() }}
+      disabled={disabled} title={title}
       style={{
-        height: 28, minWidth: 28, padding: '0 6px',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        border: active ? '0.5px solid #85B7EB' : '0.5px solid transparent',
-        borderRadius: 6,
-        background: active ? '#E6F1FB' : 'transparent',
-        color: active ? '#0C447C' : disabled ? '#ccc' : '#3a3a36',
-        cursor: disabled ? 'default' : 'pointer',
-        fontSize: 13, fontWeight: 500,
+        height: 30, minWidth: width || 30, padding: '0 6px',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3,
+        border: 'none', borderRadius: 5,
+        background: active ? 'rgba(78,140,140,0.15)' : 'transparent',
+        color: active ? '#2e5f5f' : disabled ? '#ccc' : danger ? '#943030' : '#2e3640',
+        cursor: disabled ? 'default' : 'pointer', fontSize: 12,
       }}
+      onMouseEnter={e => { if (!disabled && !active) e.currentTarget.style.background = 'rgba(0,0,0,0.05)' }}
+      onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent' }}
     >{children}</button>
   )
 }
 
-function Divider() {
-  return <div style={{ width: 1, height: 18, background: 'rgba(0,0,0,0.1)', margin: '0 4px' }} />
+function Sep() {
+  return <div style={{ width: 1, height: 20, background: 'rgba(0,0,0,0.12)', margin: '0 3px', flexShrink: 0 }} />
 }
 
-function Toolbar({ editor }: { editor: any }) {
-  if (!editor) return null
+// ── Table submenu ─────────────────────────────────────────────────────────────
+
+function TableMenu({ editor, onClose }: { editor: any; onClose: () => void }) {
+  const inTable = editor.can().addColumnAfter()
+
+  const Section = ({ title }: { title: string }) => (
+    <div style={{ fontSize: 10, fontWeight: 600, color: '#8a96a2', textTransform: 'uppercase', letterSpacing: '0.08em', padding: '8px 12px 4px' }}>{title}</div>
+  )
+
+  const Item = ({ label, onClick, danger, disabled }: { label: string; onClick: () => void; danger?: boolean; disabled?: boolean }) => (
+    <button
+      onMouseDown={e => { e.preventDefault(); if (!disabled) { onClick(); onClose() } }}
+      disabled={disabled}
+      style={{
+        display: 'block', width: '100%', textAlign: 'left',
+        padding: '6px 12px', fontSize: 12, border: 'none',
+        background: 'transparent', cursor: disabled ? 'default' : 'pointer',
+        color: disabled ? '#ccc' : danger ? '#943030' : '#1a1f24',
+        borderRadius: 4,
+      }}
+      onMouseEnter={e => { if (!disabled) e.currentTarget.style.background = 'rgba(0,0,0,0.04)' }}
+      onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+    >{label}</button>
+  )
+
   return (
     <div style={{
-      display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 2,
-      padding: '6px 10px', borderBottom: '0.5px solid rgba(0,0,0,0.08)', background: '#f8f7f4',
+      position: 'absolute', top: 36, left: 0, zIndex: 9999,
+      background: '#fff', border: '0.5px solid rgba(0,0,0,0.15)',
+      borderRadius: 10, boxShadow: '0 4px 24px rgba(0,0,0,0.14)',
+      minWidth: 200, padding: '6px 0',
     }}>
-      <ToolBtn title="H1" active={editor.isActive('heading', { level: 1 })} onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}>H1</ToolBtn>
-      <ToolBtn title="H2" active={editor.isActive('heading', { level: 2 })} onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}>H2</ToolBtn>
-      <ToolBtn title="H3" active={editor.isActive('heading', { level: 3 })} onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}>H3</ToolBtn>
-      <Divider />
-      <ToolBtn title="Bold" active={editor.isActive('bold')} onClick={() => editor.chain().focus().toggleBold().run()}><b>B</b></ToolBtn>
-      <ToolBtn title="Italic" active={editor.isActive('italic')} onClick={() => editor.chain().focus().toggleItalic().run()}><i>I</i></ToolBtn>
-      <ToolBtn title="Underline" active={editor.isActive('underline')} onClick={() => editor.chain().focus().toggleUnderline().run()}><u>U</u></ToolBtn>
-      <ToolBtn title="Highlight" active={editor.isActive('highlight')} onClick={() => editor.chain().focus().toggleHighlight().run()}>▐</ToolBtn>
-      <Divider />
-      <ToolBtn title="Bullet list" active={editor.isActive('bulletList')} onClick={() => editor.chain().focus().toggleBulletList().run()}>• —</ToolBtn>
-      <ToolBtn title="Ordered list" active={editor.isActive('orderedList')} onClick={() => editor.chain().focus().toggleOrderedList().run()}>1. —</ToolBtn>
-      <Divider />
-      <ToolBtn title="Align left" active={editor.isActive({ textAlign: 'left' })} onClick={() => editor.chain().focus().setTextAlign('left').run()}>≡L</ToolBtn>
-      <ToolBtn title="Align center" active={editor.isActive({ textAlign: 'center' })} onClick={() => editor.chain().focus().setTextAlign('center').run()}>≡C</ToolBtn>
-      <ToolBtn title="Align right" active={editor.isActive({ textAlign: 'right' })} onClick={() => editor.chain().focus().setTextAlign('right').run()}>≡R</ToolBtn>
-      <Divider />
-      <ToolBtn title="Insert table" onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}>⊞ Table</ToolBtn>
-      <ToolBtn title="Add column" disabled={!editor.can().addColumnAfter()} onClick={() => editor.chain().focus().addColumnAfter().run()}>+Col</ToolBtn>
-      <ToolBtn title="Add row" disabled={!editor.can().addRowAfter()} onClick={() => editor.chain().focus().addRowAfter().run()}>+Row</ToolBtn>
-      <ToolBtn title="Delete table" disabled={!editor.can().deleteTable()} onClick={() => editor.chain().focus().deleteTable().run()}>✕Tbl</ToolBtn>
-      <Divider />
-      <ToolBtn title="Undo" disabled={!editor.can().undo()} onClick={() => editor.chain().focus().undo().run()}>↩</ToolBtn>
-      <ToolBtn title="Redo" disabled={!editor.can().redo()} onClick={() => editor.chain().focus().redo().run()}>↪</ToolBtn>
+      <Section title="Insert" />
+      <Item label="Insert table (3×3)" onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()} />
+      <Item label="Insert table (5×3)" onClick={() => editor.chain().focus().insertTable({ rows: 5, cols: 3, withHeaderRow: true }).run()} />
+
+      <div style={{ height: 1, background: 'rgba(0,0,0,0.08)', margin: '4px 0' }} />
+      <Section title="Columns" />
+      <Item label="Add column before" disabled={!inTable} onClick={() => editor.chain().focus().addColumnBefore().run()} />
+      <Item label="Add column after"  disabled={!inTable} onClick={() => editor.chain().focus().addColumnAfter().run()} />
+      <Item label="Delete column"     disabled={!inTable} danger onClick={() => editor.chain().focus().deleteColumn().run()} />
+
+      <div style={{ height: 1, background: 'rgba(0,0,0,0.08)', margin: '4px 0' }} />
+      <Section title="Rows" />
+      <Item label="Add row before" disabled={!inTable} onClick={() => editor.chain().focus().addRowBefore().run()} />
+      <Item label="Add row after"  disabled={!inTable} onClick={() => editor.chain().focus().addRowAfter().run()} />
+      <Item label="Delete row"     disabled={!inTable} danger onClick={() => editor.chain().focus().deleteRow().run()} />
+
+      <div style={{ height: 1, background: 'rgba(0,0,0,0.08)', margin: '4px 0' }} />
+      <Section title="Table" />
+      <Item label="Toggle header row" disabled={!inTable} onClick={() => editor.chain().focus().toggleHeaderRow().run()} />
+      <Item label="Merge cells"       disabled={!inTable || !editor.can().mergeCells()} onClick={() => editor.chain().focus().mergeCells().run()} />
+      <Item label="Split cell"        disabled={!inTable || !editor.can().splitCell()} onClick={() => editor.chain().focus().splitCell().run()} />
+      <Item label="Delete table" disabled={!inTable} danger onClick={() => editor.chain().focus().deleteTable().run()} />
     </div>
   )
 }
 
+// ── Font size panel ───────────────────────────────────────────────────────────
+
+function FontPanel({ sizes, onChange, onClose }: {
+  sizes: typeof DEFAULT_SIZES
+  onChange: (key: keyof typeof DEFAULT_SIZES, val: number) => void
+  onClose: () => void
+}) {
+  const rows: { key: keyof typeof DEFAULT_SIZES; label: string; style: React.CSSProperties }[] = [
+    { key: 'p',  label: 'Normal text', style: { fontSize: sizes.p, fontFamily: 'DM Sans, sans-serif' } },
+    { key: 'h1', label: 'Heading 1',   style: { fontSize: Math.min(sizes.h1, 26), fontFamily: 'Cormorant Garamond, serif', fontWeight: 700 } },
+    { key: 'h2', label: 'Heading 2',   style: { fontSize: Math.min(sizes.h2, 22), fontFamily: 'Cormorant Garamond, serif', fontWeight: 600 } },
+    { key: 'h3', label: 'Heading 3',   style: { fontSize: Math.min(sizes.h3, 16), fontWeight: 600 } },
+    { key: 'h4', label: 'Heading 4',   style: { fontSize: sizes.h4, fontWeight: 600, color: '#5a6472' } },
+  ]
+
+  return (
+    <div style={{
+      position: 'absolute', top: 36, left: 0, zIndex: 9999,
+      background: '#fff', border: '0.5px solid rgba(0,0,0,0.15)',
+      borderRadius: 10, boxShadow: '0 4px 24px rgba(0,0,0,0.12)',
+      padding: 16, width: 310,
+    }}>
+      <div style={{ fontSize: 11, fontWeight: 600, color: '#5a6472', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 12 }}>Font sizes</div>
+      {rows.map(r => (
+        <div key={r.key} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 10, color: '#8a96a2', marginBottom: 1 }}>{r.label}</div>
+            <div style={{ ...r.style, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: 1.3 }}>
+              Sample text
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+            <button onClick={() => onChange(r.key, Math.max(8, sizes[r.key] - 1))}
+              style={{ width: 24, height: 24, border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 4, background: '#f5f2ee', cursor: 'pointer', fontSize: 14 }}>−</button>
+            <input type="number" value={sizes[r.key]}
+              onChange={e => onChange(r.key, Math.max(8, Math.min(72, parseInt(e.target.value) || sizes[r.key])))}
+              style={{ width: 42, height: 24, textAlign: 'center', border: '0.5px solid rgba(0,0,0,0.2)', borderRadius: 4, fontSize: 12, outline: 'none' }} />
+            <button onClick={() => onChange(r.key, Math.min(72, sizes[r.key] + 1))}
+              style={{ width: 24, height: 24, border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 4, background: '#f5f2ee', cursor: 'pointer', fontSize: 14 }}>+</button>
+          </div>
+        </div>
+      ))}
+      <button onClick={onClose} style={{ width: '100%', height: 28, marginTop: 6, fontSize: 12, background: '#4e8c8c', border: 'none', borderRadius: 6, color: '#fff', cursor: 'pointer' }}>Done</button>
+    </div>
+  )
+}
+
+// ── Toolbar ───────────────────────────────────────────────────────────────────
+
+function Toolbar({ editor, sizes, onSizeChange }: {
+  editor: any
+  sizes: typeof DEFAULT_SIZES
+  onSizeChange: (key: keyof typeof DEFAULT_SIZES, val: number) => void
+}) {
+  const [showTable, setShowTable] = useState(false)
+  const [showFont, setShowFont] = useState(false)
+
+  if (!editor) return null
+
+  const headingValue = editor.isActive('heading', { level: 1 }) ? '1'
+    : editor.isActive('heading', { level: 2 }) ? '2'
+    : editor.isActive('heading', { level: 3 }) ? '3'
+    : editor.isActive('heading', { level: 4 }) ? '4' : '0'
+
+  const currentFont = FONTS.find(f => editor.isActive('textStyle', { fontFamily: f.value }))?.value || FONTS[0].value
+
+  const Overlay = ({ onClose }: { onClose: () => void }) => (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 299 }} onClick={onClose} />
+  )
+
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1,
+      padding: '4px 10px', borderBottom: '1px solid #e0ddd8',
+      background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.06)', overflow: 'visible',
+    }}>
+      {/* Undo / Redo */}
+      <Btn title="Undo (Ctrl+Z)" disabled={!editor.can().undo()} onClick={() => editor.chain().focus().undo().run()}><I.Undo /></Btn>
+      <Btn title="Redo (Ctrl+Y)" disabled={!editor.can().redo()} onClick={() => editor.chain().focus().redo().run()}><I.Redo /></Btn>
+
+      <Sep />
+
+      {/* Heading style */}
+      <select value={headingValue}
+        onChange={e => {
+          const v = e.target.value
+          if (v === '0') editor.chain().focus().setParagraph().run()
+          else editor.chain().focus().toggleHeading({ level: parseInt(v) as 1|2|3|4 }).run()
+        }}
+        style={{ height: 28, padding: '0 6px', fontSize: 12, border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 5, background: '#fff', cursor: 'pointer', color: '#2e3640' }}>
+        <option value="0">Normal text</option>
+        <option value="1">Heading 1</option>
+        <option value="2">Heading 2</option>
+        <option value="3">Heading 3</option>
+        <option value="4">Heading 4</option>
+      </select>
+
+      {/* Font family */}
+      <select value={currentFont}
+        onChange={e => editor.chain().focus().setFontFamily(e.target.value).run()}
+        style={{ height: 28, padding: '0 6px', fontSize: 12, border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 5, background: '#fff', cursor: 'pointer', color: '#2e3640', maxWidth: 160, marginLeft: 4 }}>
+        {FONTS.map(f => (
+          <option key={f.value} value={f.value} style={{ fontFamily: f.value }}>{f.label}</option>
+        ))}
+      </select>
+
+      {/* Font sizes panel */}
+      <div style={{ position: 'relative' }}>
+        <Btn title="Font sizes" active={showFont} onClick={() => { setShowFont(v => !v); setShowTable(false) }}>
+          <span style={{ fontSize: 12, fontWeight: 600 }}>Aa</span>
+          <I.ChevronDown />
+        </Btn>
+        {showFont && (
+          <>
+            <Overlay onClose={() => setShowFont(false)} />
+            <FontPanel sizes={sizes} onChange={onSizeChange} onClose={() => setShowFont(false)} />
+          </>
+        )}
+      </div>
+
+      <Sep />
+
+      {/* Inline formatting */}
+      <Btn title="Bold (Ctrl+B)" active={editor.isActive('bold')} onClick={() => editor.chain().focus().toggleBold().run()}><I.Bold /></Btn>
+      <Btn title="Italic (Ctrl+I)" active={editor.isActive('italic')} onClick={() => editor.chain().focus().toggleItalic().run()}><I.Italic /></Btn>
+      <Btn title="Underline (Ctrl+U)" active={editor.isActive('underline')} onClick={() => editor.chain().focus().toggleUnderline().run()}><I.Underline /></Btn>
+      <Btn title="Strikethrough" active={editor.isActive('strike')} onClick={() => editor.chain().focus().toggleStrike().run()}><I.Strike /></Btn>
+      <Btn title="Highlight" active={editor.isActive('highlight')} onClick={() => editor.chain().focus().toggleHighlight().run()}><I.Highlight /></Btn>
+
+      <Sep />
+
+      {/* Lists + quote */}
+      <Btn title="Bullet list" active={editor.isActive('bulletList')} onClick={() => editor.chain().focus().toggleBulletList().run()}><I.BulletList /></Btn>
+      <Btn title="Numbered list" active={editor.isActive('orderedList')} onClick={() => editor.chain().focus().toggleOrderedList().run()}><I.OrderedList /></Btn>
+      <Btn title="Blockquote" active={editor.isActive('blockquote')} onClick={() => editor.chain().focus().toggleBlockquote().run()}><I.Blockquote /></Btn>
+
+      <Sep />
+
+      {/* Alignment */}
+      <Btn title="Align left" active={editor.isActive({ textAlign: 'left' })} onClick={() => editor.chain().focus().setTextAlign('left').run()}><I.AlignLeft /></Btn>
+      <Btn title="Align center" active={editor.isActive({ textAlign: 'center' })} onClick={() => editor.chain().focus().setTextAlign('center').run()}><I.AlignCenter /></Btn>
+      <Btn title="Align right" active={editor.isActive({ textAlign: 'right' })} onClick={() => editor.chain().focus().setTextAlign('right').run()}><I.AlignRight /></Btn>
+      <Btn title="Justify" active={editor.isActive({ textAlign: 'justify' })} onClick={() => editor.chain().focus().setTextAlign('justify').run()}><I.AlignJust /></Btn>
+
+      <Sep />
+
+      {/* Table submenu */}
+      <div style={{ position: 'relative' }}>
+        <Btn title="Table" active={showTable || editor.can().addColumnAfter()} onClick={() => { setShowTable(v => !v); setShowFont(false) }}>
+          <I.Table />
+          <I.ChevronDown />
+        </Btn>
+        {showTable && (
+          <>
+            <Overlay onClose={() => setShowTable(false)} />
+            <TableMenu editor={editor} onClose={() => setShowTable(false)} />
+          </>
+        )}
+      </div>
+
+      <Sep />
+
+      {/* Misc */}
+      <Btn title="Horizontal rule" onClick={() => editor.chain().focus().setHorizontalRule().run()}><I.HRule /></Btn>
+    </div>
+  )
+}
+
+// ── Editor CSS ────────────────────────────────────────────────────────────────
+
+function buildEditorStyles(sizes: typeof DEFAULT_SIZES) {
+  return `
+    .ProseMirror { outline: none; font-size: ${sizes.p}px; line-height: 1.8; color: #1a1f24; min-height: 600px; }
+    .ProseMirror p { margin: 0 0 10px; font-size: ${sizes.p}px; }
+    .ProseMirror h1 { font-family: 'Cormorant Garamond', serif; font-size: ${sizes.h1}px; font-weight: 700; line-height: 1.2; margin: 28px 0 12px; padding-bottom: 8px; border-bottom: 1px solid #e0ddd8; }
+    .ProseMirror h2 { font-family: 'Cormorant Garamond', serif; font-size: ${sizes.h2}px; font-weight: 600; line-height: 1.3; margin: 22px 0 10px; }
+    .ProseMirror h3 { font-size: ${sizes.h3}px; font-weight: 600; margin: 18px 0 8px; }
+    .ProseMirror h4 { font-size: ${sizes.h4}px; font-weight: 600; margin: 14px 0 6px; color: #5a6472; }
+    .ProseMirror ul { list-style-type: disc !important; padding-left: 24px; margin: 6px 0 10px; }
+    .ProseMirror ol { list-style-type: decimal !important; padding-left: 24px; margin: 6px 0 10px; }
+    .ProseMirror ul ul { list-style-type: circle !important; }
+    .ProseMirror ul ul ul { list-style-type: square !important; }
+    .ProseMirror li { margin-bottom: 3px; }
+    .ProseMirror li p { margin: 0; display: inline; }
+    .ProseMirror blockquote { border-left: 3px solid #4e8c8c; margin: 12px 0; padding: 8px 16px; background: rgba(78,140,140,0.05); color: #5a6472; font-style: italic; border-radius: 0 4px 4px 0; }
+    .ProseMirror hr { border: none; border-top: 1px solid #e0ddd8; margin: 20px 0; }
+    .ProseMirror table { border-collapse: collapse; width: 100%; margin: 16px 0; font-size: ${Math.max(sizes.p - 1, 11)}px; }
+    .ProseMirror th { background: #f5f2ee; padding: 8px 12px; border: 1px solid #d8d4ce; font-weight: 600; text-align: left; color: #2e3640; }
+    .ProseMirror td { padding: 8px 12px; border: 1px solid #d8d4ce; vertical-align: top; }
+    .ProseMirror tr:nth-child(even) td { background: #faf9f7; }
+    .ProseMirror mark { background: #fff3b0; border-radius: 2px; padding: 1px 2px; }
+    .ProseMirror .selectedCell { background: rgba(78,140,140,0.1) !important; }
+    .ProseMirror p.is-editor-empty:first-child::before { content: attr(data-placeholder); float: left; color: #8a96a2; pointer-events: none; height: 0; font-style: italic; }
+    .tableWrapper { overflow-x: auto; }
+    .column-resize-handle { background-color: #4e8c8c; bottom: -2px; position: absolute; right: -2px; top: 0; width: 4px; pointer-events: none; }
+  `
+}
+
+// ── Extensions ────────────────────────────────────────────────────────────────
+
 function makeExtensions(placeholder: string) {
   return [
-    StarterKit, Underline, Highlight,
+    StarterKit,
+    TextStyle,
+    FontFamily,
+    Underline,
+    Highlight.configure({ multicolor: false }),
     TextAlign.configure({ types: ['heading', 'paragraph'] }),
     Table.configure({ resizable: true }),
     TableRow, TableHeader, TableCell,
@@ -113,23 +371,7 @@ function makeExtensions(placeholder: string) {
   ]
 }
 
-const EDITOR_STYLES = `
-  .ProseMirror p.is-editor-empty:first-child::before {
-    content: attr(data-placeholder);
-    float: left; color: #aaa9a3; pointer-events: none; height: 0;
-  }
-  .ProseMirror { font-size: 14px; line-height: 1.7; color: #1a1a18; }
-  .ProseMirror h1 { font-size: 20px; font-weight: 600; margin: 20px 0 8px; }
-  .ProseMirror h2 { font-size: 16px; font-weight: 600; margin: 16px 0 6px; }
-  .ProseMirror h3 { font-size: 14px; font-weight: 600; margin: 12px 0 4px; }
-  .ProseMirror p  { margin: 0 0 8px; }
-  .ProseMirror ul, .ProseMirror ol { padding-left: 20px; margin: 0 0 8px; }
-  .ProseMirror table { border-collapse: collapse; width: 100%; margin: 12px 0; }
-  .ProseMirror th, .ProseMirror td { border: 0.5px solid #D3D1C7; padding: 6px 10px; text-align: left; font-size: 13px; }
-  .ProseMirror th { background: #f1efe8; font-weight: 600; }
-  .ProseMirror mark { background: #FFF3B0; border-radius: 2px; padding: 0 2px; }
-  .ProseMirror .selectedCell { background: #E6F1FB; }
-`
+// ── Main ──────────────────────────────────────────────────────────────────────
 
 export default function DocumentEditorPage() {
   const params = useParams()
@@ -145,24 +387,25 @@ export default function DocumentEditorPage() {
   const [hasExample, setHasExample] = useState(false)
   const [userRole, setUserRole] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [wordCount, setWordCount] = useState(0)
+  const [sizes, setSizes] = useState(DEFAULT_SIZES)
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const latestContent = useRef<any>(null)
 
-  // Load session role
+  function handleSizeChange(key: keyof typeof DEFAULT_SIZES, val: number) {
+    setSizes(prev => ({ ...prev, [key]: val }))
+  }
+
   useEffect(() => {
-    fetch('/api/auth/session')
-      .then(r => r.ok ? r.json() : null)
-      .then(data => { if (data?.user) setUserRole(data.user.role) })
+    fetch('/api/auth/session').then(r => r.ok ? r.json() : null).then(d => { if (d?.user) setUserRole(d.user.role) })
   }, [])
 
-  // Load document
   useEffect(() => {
     fetch(`/api/projects/${projectId}/documents/${docId}`)
       .then(r => r.ok ? r.json() : Promise.reject())
       .then((data: DocData) => {
-        setDoc(data)
-        setDocStatus(data.status)
+        setDoc(data); setDocStatus(data.status)
         const ex = data.example_content
         setHasExample(!!(ex && typeof ex === 'object' && Object.keys(ex).length > 0))
         setLoading(false)
@@ -174,45 +417,38 @@ export default function DocumentEditorPage() {
     setSaveState('saving')
     try {
       const res = await fetch(`/api/projects/${projectId}/documents/${docId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content }),
       })
       if (!res.ok) throw new Error()
       setSaveState('saved')
-    } catch {
-      setSaveState('error')
-    }
+    } catch { setSaveState('error') }
   }, [projectId, docId])
 
   async function updateStatus(status: string) {
     setDocStatus(status)
     await fetch(`/api/projects/${projectId}/documents/${docId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status }),
     })
   }
 
   async function submitForReview() {
     setSubmitting(true)
-    // Save any pending content first
-    if (latestContent.current) {
-      if (saveTimer.current) clearTimeout(saveTimer.current)
-      await save(latestContent.current)
-    }
+    if (latestContent.current) { if (saveTimer.current) clearTimeout(saveTimer.current); await save(latestContent.current) }
     await updateStatus('review')
     setSubmitting(false)
   }
 
   const editor = useEditor({
-    extensions: makeExtensions('Start writing this record…'),
+    extensions: makeExtensions('Start writing…'),
     content: '',
-    editorProps: { attributes: { style: 'outline: none; min-height: 100%; padding: 0;' } },
+    editorProps: { attributes: { style: 'outline: none;' } },
     onUpdate: ({ editor }) => {
       const content = editor.getJSON()
       latestContent.current = content
       setSaveState('unsaved')
+      setWordCount(editor.storage.characterCount?.words() ?? 0)
       if (saveTimer.current) clearTimeout(saveTimer.current)
       saveTimer.current = setTimeout(() => save(content), 2000)
     },
@@ -222,32 +458,27 @@ export default function DocumentEditorPage() {
     if (!editor || !doc) return
     if (doc.content && Object.keys(doc.content).length > 0) {
       editor.commands.setContent(doc.content)
+      setWordCount(editor.storage.characterCount?.words() ?? 0)
     }
   }, [editor, doc])
 
   const refEditor = useEditor({
     extensions: makeExtensions(''),
-    content: '',
-    editable: false,
-    editorProps: { attributes: { style: 'outline: none; min-height: 100%; padding: 0;' } },
+    content: '', editable: false,
+    editorProps: { attributes: { style: 'outline: none;' } },
   })
 
   useEffect(() => {
     if (!refEditor || !doc) return
     const ex = doc.example_content
-    if (ex && typeof ex === 'object' && Object.keys(ex).length > 0) {
-      refEditor.commands.setContent(ex)
-    }
+    if (ex && typeof ex === 'object' && Object.keys(ex).length > 0) refEditor.commands.setContent(ex)
   }, [refEditor, doc])
 
   useEffect(() => {
     function handler(e: KeyboardEvent) {
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
         e.preventDefault()
-        if (latestContent.current) {
-          if (saveTimer.current) clearTimeout(saveTimer.current)
-          save(latestContent.current)
-        }
+        if (latestContent.current) { if (saveTimer.current) clearTimeout(saveTimer.current); save(latestContent.current) }
       }
     }
     window.addEventListener('keydown', handler)
@@ -256,192 +487,100 @@ export default function DocumentEditorPage() {
 
   useEffect(() => () => { if (saveTimer.current) clearTimeout(saveTimer.current) }, [])
 
-  if (loading) return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh', color: '#9b9991', fontSize: 13 }}>
-      Loading record…
-    </div>
-  )
+  if (loading) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh', color: '#8a96a2', fontSize: 13 }}>Loading…</div>
   if (!doc) return null
 
   const st = DOC_STATUS[docStatus] || DOC_STATUS.draft
-  const charCount = editor?.storage.characterCount?.characters() ?? 0
   const isClient = userRole === 'client'
   const isApproved = docStatus === 'approved'
   const isReview = docStatus === 'review'
-
-  // Back link — clients go to client project page, others to admin project page
-  const backHref = isClient
-    ? `/dashboard/client/projects/${projectId}`
-    : `/dashboard/projects/${projectId}`
+  const backHref = isClient ? `/dashboard/client/projects/${projectId}` : `/dashboard/projects/${projectId}`
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 60px)' }}>
-      <style>{EDITOR_STYLES}</style>
+    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 60px)', background: '#f5f2ee' }}>
+      <style>{buildEditorStyles(sizes)}</style>
 
       {/* Top bar */}
-      <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '0 20px', height: 48, flexShrink: 0,
-        borderBottom: '0.5px solid rgba(0,0,0,0.08)', background: '#fff',
-      }}>
-        {/* Breadcrumb */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#9b9991' }}>
-          <Link href={isClient ? '/dashboard/client' : '/dashboard/projects'} style={{ color: '#9b9991', textDecoration: 'none' }}>
-            {isClient ? 'My Projects' : 'Projects'}
-          </Link>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 16px', height: 48, flexShrink: 0, borderBottom: '1px solid #e0ddd8', background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#8a96a2', minWidth: 0 }}>
+          <Link href={isClient ? '/dashboard/client' : '/dashboard/projects'} style={{ color: '#8a96a2', textDecoration: 'none' }}>{isClient ? 'My Projects' : 'Projects'}</Link>
           <span>›</span>
-          <Link href={backHref} style={{ color: '#9b9991', textDecoration: 'none' }}>{doc.project_name}</Link>
+          <Link href={backHref} style={{ color: '#8a96a2', textDecoration: 'none', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>{doc.project_name}</Link>
           <span>›</span>
-          <span style={{ color: '#1a1a18', fontWeight: 500 }}>{doc.name}</span>
+          <span style={{ color: '#1a1f24', fontWeight: 500, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>{doc.name}</span>
         </div>
-
-        {/* Right controls */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          {/* Save state */}
-          <span style={{
-            fontSize: 11,
-            color: saveState === 'saved' ? '#27500A' : saveState === 'saving' ? '#633806' : saveState === 'error' ? '#7C1C0C' : '#9b9991',
-          }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+          <span style={{ fontSize: 11, color: saveState === 'saved' ? '#3a7a5a' : saveState === 'saving' ? '#8a6020' : saveState === 'error' ? '#943030' : '#8a96a2' }}>
             {saveState === 'saved' ? '✓ Saved' : saveState === 'saving' ? 'Saving…' : saveState === 'error' ? '⚠ Save failed' : '● Unsaved'}
           </span>
-
-          {/* Status display */}
-          <span style={{
-            fontSize: 11, padding: '3px 10px', borderRadius: 6,
-            background: st.bg, color: st.color, border: `0.5px solid ${st.border}`,
-          }}>{st.label}</span>
-
-          {/* Admin/consultant: full status dropdown */}
+          <span style={{ fontSize: 11, padding: '3px 10px', borderRadius: 20, background: st.bg, color: st.color, border: `0.5px solid ${st.border}`, fontWeight: 500 }}>{st.label}</span>
           {!isClient && (
-            <select value={docStatus} onChange={e => updateStatus(e.target.value)} style={{
-              height: 28, padding: '0 8px', fontSize: 12,
-              border: `0.5px solid ${st.border}`, borderRadius: 6,
-              background: st.bg, color: st.color, cursor: 'pointer',
-            }}>
+            <select value={docStatus} onChange={e => updateStatus(e.target.value)} style={{ height: 28, padding: '0 8px', fontSize: 12, border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 6, background: '#fff', color: '#2e3640', cursor: 'pointer' }}>
               <option value="draft">Draft</option>
               <option value="inprogress">In progress</option>
               <option value="review">In review</option>
               <option value="approved">Approved</option>
             </select>
           )}
-
-          {/* Client: Submit for review button */}
           {isClient && !isApproved && !isReview && (
-            <button
-              onClick={submitForReview}
-              disabled={submitting}
-              style={{
-                height: 28, padding: '0 12px', fontSize: 12, cursor: 'pointer',
-                background: '#185FA5', border: 'none', borderRadius: 6,
-                color: '#fff', opacity: submitting ? 0.7 : 1,
-              }}
-            >{submitting ? 'Submitting…' : 'Submit for review'}</button>
+            <button onClick={submitForReview} disabled={submitting} style={{ height: 28, padding: '0 14px', fontSize: 12, cursor: 'pointer', background: '#4e8c8c', border: 'none', borderRadius: 6, color: '#fff', opacity: submitting ? 0.7 : 1, fontWeight: 500 }}>
+              {submitting ? 'Submitting…' : 'Submit for review'}
+            </button>
           )}
-
-          {/* Client: In review state */}
-          {isClient && isReview && (
-            <span style={{ fontSize: 12, color: '#0C447C' }}>⏳ Awaiting consultant review</span>
-          )}
-
-          {/* Client: Approved state */}
-          {isClient && isApproved && (
-            <span style={{ fontSize: 12, color: '#27500A' }}>✓ Approved</span>
-          )}
-
-          {/* Reference toggle */}
-          <button onClick={() => setShowReference(v => !v)} style={{
-            height: 28, padding: '0 10px', fontSize: 12, cursor: 'pointer',
-            background: showReference ? '#E6F1FB' : 'transparent',
-            border: showReference ? '0.5px solid #85B7EB' : '0.5px solid rgba(0,0,0,0.15)',
-            borderRadius: 6, color: showReference ? '#0C447C' : '#5F5E5A',
-          }}>
-            {showReference ? '▐ Hide example' : '▐ Show example'}
+          {isClient && isReview && <span style={{ fontSize: 12, color: '#8a6020', fontWeight: 500 }}>⏳ Awaiting review</span>}
+          {isClient && isApproved && <span style={{ fontSize: 12, color: '#3a7a5a', fontWeight: 500 }}>✓ Approved</span>}
+          <button onClick={() => setShowReference(v => !v)} style={{ height: 28, padding: '0 12px', fontSize: 12, cursor: 'pointer', background: showReference ? 'rgba(78,140,140,0.1)' : 'transparent', border: showReference ? '0.5px solid rgba(78,140,140,0.4)' : '0.5px solid rgba(0,0,0,0.15)', borderRadius: 6, color: showReference ? '#2e5f5f' : '#5a6472', fontWeight: 500 }}>
+            {showReference ? 'Hide example' : 'Show example'}
           </button>
-
-          <span style={{ fontSize: 11, color: '#9b9991' }}>{charCount} chars</span>
         </div>
       </div>
 
       {/* Meta strip */}
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 12,
-        padding: '7px 20px', flexShrink: 0,
-        borderBottom: '0.5px solid rgba(0,0,0,0.06)',
-        background: '#f8f7f4', fontSize: 12,
-      }}>
-        <span style={{ fontWeight: 500, color: '#1a1a18' }}>{doc.annex}</span>
-        <span style={{ color: '#9b9991' }}>·</span>
-        <span style={{ fontFamily: 'monospace', color: '#5F5E5A', fontSize: 11 }}>{doc.code}</span>
-        {doc.template_name && (
-          <>
-            <span style={{ color: '#9b9991' }}>·</span>
-            <span style={{ color: '#9b9991' }}>Template: {doc.template_name} {doc.template_version}</span>
-          </>
-        )}
-        <span style={{ color: '#9b9991' }}>·</span>
-        <span style={{ color: '#9b9991' }}>{doc.device_name}</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '5px 16px', flexShrink: 0, borderBottom: '1px solid #e0ddd8', background: '#fff', fontSize: 11, color: '#8a96a2' }}>
+        <span style={{ fontWeight: 500, color: '#5a6472' }}>{doc.annex}</span>
+        <span>·</span><span style={{ fontFamily: 'monospace' }}>{doc.code}</span>
+        {doc.template_name && <><span>·</span><span>Template: {doc.template_name} {doc.template_version}</span></>}
+        <span>·</span><span>{doc.device_name}</span>
+        <span style={{ marginLeft: 'auto' }}>{wordCount} words</span>
       </div>
 
-      {/* Approved banner for clients */}
       {isClient && isApproved && (
-        <div style={{
-          padding: '10px 20px', background: '#EAF3DE',
-          borderBottom: '0.5px solid #97C459',
-          fontSize: 12, color: '#27500A', flexShrink: 0,
-        }}>
-          ✓ This record has been approved. It is now read-only.
+        <div style={{ padding: '8px 16px', flexShrink: 0, background: 'rgba(58,122,90,0.08)', borderBottom: '1px solid rgba(58,122,90,0.2)', fontSize: 12, color: '#3a7a5a' }}>
+          ✓ This record has been approved and is now read-only.
         </div>
       )}
 
       {/* Split pane */}
-      <div style={{
-        flex: 1, overflow: 'hidden',
-        display: 'grid',
-        gridTemplateColumns: showReference ? '1fr 1fr' : '1fr',
-      }}>
-        {/* Left — record */}
-        <div style={{
-          display: 'flex', flexDirection: 'column', overflow: 'hidden',
-          borderRight: showReference ? '0.5px solid rgba(0,0,0,0.1)' : 'none',
-        }}>
-          {/* Hide toolbar if approved for clients */}
-          {!(isClient && isApproved) && <Toolbar editor={editor} />}
-
-          <div style={{ flex: 1, overflowY: 'auto', padding: '28px 40px' }}>
-            <EditorContent editor={isClient && isApproved ? refEditor : editor} />
+      <div style={{ flex: 1, overflow: 'hidden', display: 'grid', gridTemplateColumns: showReference ? '1fr 1fr' : '1fr' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', overflow: 'visible', borderRight: showReference ? '1px solid #d8d4ce' : 'none', background: '#f5f2ee' }}>
+          {!(isClient && isApproved) && <Toolbar editor={editor} sizes={sizes} onSizeChange={handleSizeChange} />}
+          <div style={{ flex: 1, overflowY: 'auto', padding: '32px 24px' }}>
+            <div style={{ maxWidth: 780, margin: '0 auto', background: '#fff', boxShadow: '0 1px 4px rgba(0,0,0,0.08), 0 4px 16px rgba(0,0,0,0.04)', borderRadius: 2, padding: '60px 72px', minHeight: 900 }}>
+              <EditorContent editor={isClient && isApproved ? refEditor : editor} />
+            </div>
+            <div style={{ height: 48 }} />
           </div>
         </div>
 
-        {/* Right — example */}
         {showReference && (
-          <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#fafaf8' }}>
-            <div style={{
-              padding: '7px 16px', borderBottom: '0.5px solid rgba(0,0,0,0.08)',
-              background: '#f1efe8', fontSize: 11, fontWeight: 500, color: '#5F5E5A',
-              display: 'flex', alignItems: 'center', gap: 6,
-            }}>
-              <span>▐</span>
+          <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#ede9e3' }}>
+            <div style={{ padding: '8px 16px', flexShrink: 0, borderBottom: '1px solid #d8d4ce', background: '#e8e3dc', fontSize: 11, fontWeight: 600, color: '#5a6472', display: 'flex', alignItems: 'center', gap: 6, textTransform: 'uppercase' as const, letterSpacing: '0.06em' }}>
               <span>Example</span>
-              {doc.template_name && (
-                <span style={{ fontWeight: 400, color: '#9b9991' }}>— {doc.template_name}</span>
-              )}
+              {doc.template_name && <span style={{ fontWeight: 400, color: '#8a96a2', textTransform: 'none' as const, letterSpacing: 0 }}>— {doc.template_name}</span>}
             </div>
-
-            <div style={{ flex: 1, overflowY: 'auto', padding: '28px 40px' }}>
+            <div style={{ flex: 1, overflowY: 'auto', padding: '32px 24px' }}>
               {hasExample ? (
-                <EditorContent editor={refEditor} />
+                <div style={{ maxWidth: 780, margin: '0 auto', background: '#fff', opacity: 0.92, boxShadow: '0 1px 4px rgba(0,0,0,0.06)', borderRadius: 2, padding: '60px 72px', minHeight: 900 }}>
+                  <EditorContent editor={refEditor} />
+                </div>
               ) : (
-                <div style={{
-                  display: 'flex', flexDirection: 'column', alignItems: 'center',
-                  justifyContent: 'center', height: '100%', gap: 10, textAlign: 'center',
-                }}>
-                  <div style={{ fontSize: 28, opacity: 0.3 }}>▐</div>
-                  <div style={{ fontSize: 13, fontWeight: 500, color: '#5F5E5A' }}>No example available</div>
-                  <div style={{ fontSize: 12, color: '#9b9991', maxWidth: 260, lineHeight: 1.6 }}>
-                    Ask your project consultant to provide an example for this template.
-                  </div>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60%', gap: 12, textAlign: 'center' }}>
+                  <div style={{ fontSize: 32, opacity: 0.2 }}>📄</div>
+                  <div style={{ fontSize: 13, fontWeight: 500, color: '#5a6472' }}>No example available</div>
+                  <div style={{ fontSize: 12, color: '#8a96a2', maxWidth: 240, lineHeight: 1.7 }}>Ask your project consultant to provide an example for this template.</div>
                 </div>
               )}
+              <div style={{ height: 48 }} />
             </div>
           </div>
         )}

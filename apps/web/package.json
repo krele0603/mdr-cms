@@ -28,6 +28,8 @@
     "@tiptap/extension-text-align": "^2.4.0",
     "@tiptap/extension-typography": "^2.4.0",
     "@tiptap/extension-character-count": "^2.4.0",
+    "@tiptap/extension-font-family": "^2.4.0",
+    "@tiptap/extension-text-style": "^2.4.0",
     "y-prosemirror": "^1.2.12",
     "yjs": "^13.6.18",
     "pg": "^8.12.0",
