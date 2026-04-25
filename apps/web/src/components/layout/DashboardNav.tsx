@@ -3,8 +3,12 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { SessionUser, ROLE_LABELS, ROLE_COLORS } from '@/lib/auth-types'
 
-interface Props {
-  user: SessionUser
+interface Props { user: SessionUser }
+
+const ROLE_STYLES: Record<string, { bg: string; color: string; border: string }> = {
+  admin:      { bg: 'rgba(78,140,140,0.15)', color: '#2e5f5f', border: 'rgba(78,140,140,0.4)' },
+  consultant: { bg: 'rgba(200,169,110,0.15)', color: '#7a5a10', border: 'rgba(200,169,110,0.5)' },
+  client:     { bg: 'rgba(90,100,114,0.1)', color: '#5a6472', border: 'rgba(90,100,114,0.3)' },
 }
 
 const allNavItems = [
@@ -59,7 +63,6 @@ const allNavItems = [
       </svg>
     ),
   },
-  // Client-only nav
   {
     label: 'My Projects',
     href: '/dashboard/client',
@@ -75,8 +78,7 @@ const allNavItems = [
 export default function DashboardNav({ user }: Props) {
   const pathname = usePathname()
   const router = useRouter()
-  const roleStyle = ROLE_COLORS[user.role]
-
+  const roleStyle = ROLE_STYLES[user.role] || ROLE_STYLES.client
   const navItems = allNavItems.filter(item => item.roles.includes(user.role))
 
   async function handleLogout() {
@@ -95,23 +97,29 @@ export default function DashboardNav({ user }: Props) {
   return (
     <aside style={{
       width: 220,
-      background: '#fff',
-      borderRight: '0.5px solid rgba(0,0,0,0.1)',
+      background: '#1a1f24',
+      borderRight: 'none',
       display: 'flex',
       flexDirection: 'column',
       flexShrink: 0,
     }}>
       {/* Logo */}
       <div style={{
-        padding: '18px 20px 14px',
-        borderBottom: '0.5px solid rgba(0,0,0,0.08)',
+        padding: '20px 20px 16px',
+        borderBottom: '0.5px solid rgba(255,255,255,0.08)',
       }}>
-        <div style={{ fontSize: 14, fontWeight: 500, color: '#185FA5' }}>MDR CMS</div>
-        <div style={{ fontSize: 11, color: '#9b9991', marginTop: 1 }}>Technical file manager</div>
+        <div style={{
+          fontSize: 13, fontWeight: 600, color: '#4e8c8c',
+          letterSpacing: '0.05em', textTransform: 'uppercase',
+          fontFamily: "'DM Sans', sans-serif",
+        }}>TFbuilder</div>
+        <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginTop: 2, letterSpacing: '0.03em' }}>
+          EasyMed Consulting
+        </div>
       </div>
 
       {/* Nav */}
-      <nav style={{ flex: 1, padding: '10px 8px' }}>
+      <nav style={{ flex: 1, padding: '12px 8px' }}>
         {navItems.map(item => {
           const active = pathname.startsWith(item.href)
           return (
@@ -126,10 +134,11 @@ export default function DashboardNav({ user }: Props) {
                 borderRadius: 8,
                 fontSize: 13,
                 fontWeight: active ? 500 : 400,
-                color: active ? '#185FA5' : '#6b6a64',
-                background: active ? '#E6F1FB' : 'transparent',
+                color: active ? '#4e8c8c' : 'rgba(255,255,255,0.55)',
+                background: active ? 'rgba(78,140,140,0.15)' : 'transparent',
                 textDecoration: 'none',
                 marginBottom: 2,
+                transition: 'color 0.15s, background 0.15s',
               }}
             >
               {item.icon}
@@ -142,23 +151,25 @@ export default function DashboardNav({ user }: Props) {
       {/* User + logout */}
       <div style={{
         padding: '12px 14px',
-        borderTop: '0.5px solid rgba(0,0,0,0.08)',
+        borderTop: '0.5px solid rgba(255,255,255,0.08)',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 10 }}>
           <div style={{
             width: 30, height: 30, borderRadius: '50%',
-            background: roleStyle.bg, color: roleStyle.color,
+            background: roleStyle.bg,
+            color: roleStyle.color,
             border: `0.5px solid ${roleStyle.border}`,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 11, fontWeight: 500, flexShrink: 0,
+            fontSize: 11, fontWeight: 600, flexShrink: 0,
           }}>{initials}</div>
           <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 12, fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            <div style={{ fontSize: 12, fontWeight: 500, color: 'rgba(255,255,255,0.85)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {user.name}
             </div>
             <div style={{
               fontSize: 10, display: 'inline-block', marginTop: 1,
-              background: roleStyle.bg, color: roleStyle.color,
+              background: roleStyle.bg,
+              color: roleStyle.color,
               border: `0.5px solid ${roleStyle.border}`,
               padding: '0px 5px', borderRadius: 3,
             }}>
@@ -170,9 +181,21 @@ export default function DashboardNav({ user }: Props) {
           onClick={handleLogout}
           style={{
             width: '100%', height: 28, fontSize: 12,
-            background: 'transparent', border: '0.5px solid rgba(0,0,0,0.15)',
-            borderRadius: 6, color: '#6b6a64', cursor: 'pointer',
+            background: 'transparent',
+            border: '0.5px solid rgba(255,255,255,0.12)',
+            borderRadius: 6,
+            color: 'rgba(255,255,255,0.4)',
+            cursor: 'pointer',
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+            transition: 'border-color 0.15s, color 0.15s',
+          }}
+          onMouseEnter={e => {
+            e.currentTarget.style.borderColor = 'rgba(255,255,255,0.25)'
+            e.currentTarget.style.color = 'rgba(255,255,255,0.7)'
+          }}
+          onMouseLeave={e => {
+            e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)'
+            e.currentTarget.style.color = 'rgba(255,255,255,0.4)'
           }}
         >
           <svg style={{width:12,height:12,stroke:'currentColor',fill:'none',strokeWidth:1.5,strokeLinecap:'round' as const,strokeLinejoin:'round' as const}} viewBox="0 0 24 24">

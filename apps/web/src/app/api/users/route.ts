@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
   const search = searchParams.get('search')
 
   const users = await query(
-    `SELECT id, email, name, role, created_at
+    `SELECT id, email, name, role, active, created_at
      FROM users
      ${search ? `WHERE name ILIKE $1 OR email ILIKE $1` : ''}
      ORDER BY name ASC
@@ -36,7 +36,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Email, name and password are required' }, { status: 400 })
   }
 
-  const existing = await queryOne(`SELECT id FROM users WHERE email = $1`, [email.toLowerCase().trim()])
+  const existing = await queryOne(
+    `SELECT id FROM users WHERE email = $1`,
+    [email.toLowerCase().trim()]
+  )
   if (existing) {
     return NextResponse.json({ error: 'Email already in use' }, { status: 409 })
   }
@@ -45,9 +48,9 @@ export async function POST(req: NextRequest) {
   const password_hash = await bcrypt.hash(password, 12)
 
   const user = await queryOne(
-    `INSERT INTO users (email, name, password_hash, role)
-     VALUES ($1, $2, $3, $4)
-     RETURNING id, email, name, role, created_at`,
+    `INSERT INTO users (email, name, password_hash, role, active)
+     VALUES ($1, $2, $3, $4, TRUE)
+     RETURNING id, email, name, role, active, created_at`,
     [email.toLowerCase().trim(), name.trim(), password_hash, role || 'client']
   )
 

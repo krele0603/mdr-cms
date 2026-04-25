@@ -2,31 +2,52 @@
 @tailwind components;
 @tailwind utilities;
 
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,400&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&display=swap');
+
 :root {
-  --color-bg: #ffffff;
-  --color-bg-secondary: #f8f7f4;
-  --color-bg-tertiary: #f1efe8;
-  --color-border: rgba(0,0,0,0.12);
-  --color-border-secondary: rgba(0,0,0,0.22);
-  --color-text: #1a1a18;
-  --color-text-secondary: #6b6a64;
-  --color-text-tertiary: #9b9991;
-  --color-brand: #185FA5;
-  --color-brand-dark: #0C447C;
-  --color-success: #3B6D11;
-  --color-warning: #854F0B;
-  --color-danger: #A32D2D;
+  /* EasyMed brand palette */
+  --teal:         #4e8c8c;
+  --teal-light:   #6aacac;
+  --teal-dark:    #2e5f5f;
+  --teal-bg:      rgba(78,140,140,0.08);
+  --teal-bg-mid:  rgba(78,140,140,0.15);
+  --slate:        #5a6472;
+  --slate-light:  #8a96a2;
+  --cream:        #f5f2ee;
+  --offwhite:     #faf9f7;
+  --dark:         #1a1f24;
+  --mid:          #2e3640;
+  --accent:       #c8a96e;
+  --accent-lt:    #e2c99a;
+
+  /* Semantic aliases used throughout components */
+  --color-bg:               #ffffff;
+  --color-bg-secondary:     var(--offwhite);
+  --color-bg-tertiary:      var(--cream);
+  --color-border:           rgba(0,0,0,0.1);
+  --color-border-secondary: rgba(0,0,0,0.18);
+  --color-text:             var(--dark);
+  --color-text-secondary:   var(--slate);
+  --color-text-tertiary:    var(--slate-light);
+  --color-brand:            var(--teal);
+  --color-brand-dark:       var(--teal-dark);
+  --color-brand-light:      var(--teal-light);
+  --color-brand-bg:         var(--teal-bg);
+  --color-brand-bg-mid:     var(--teal-bg-mid);
+
+  /* Status colors */
+  --color-success:  #3a7a5a;
+  --color-warning:  #8a6020;
+  --color-danger:   #943030;
 }
 
-* {
-  box-sizing: border-box;
-}
+* { box-sizing: border-box; }
 
 body {
-  font-family: Inter, system-ui, -apple-system, sans-serif;
+  font-family: 'DM Sans', system-ui, -apple-system, sans-serif;
   font-size: 14px;
-  color: var(--color-text);
-  background: var(--color-bg-tertiary);
+  color: var(--dark);
+  background: var(--cream);
   -webkit-font-smoothing: antialiased;
 }
 
@@ -35,18 +56,17 @@ body {
   outline: none;
   min-height: 400px;
 }
-
-.tiptap h1 { font-size: 22px; font-weight: 500; margin-bottom: 16px; margin-top: 8px; }
-.tiptap h2 { font-size: 16px; font-weight: 500; margin-bottom: 10px; margin-top: 20px; }
+.tiptap h1 { font-size: 22px; font-weight: 600; margin-bottom: 16px; margin-top: 8px; font-family: 'Cormorant Garamond', serif; }
+.tiptap h2 { font-size: 17px; font-weight: 600; margin-bottom: 10px; margin-top: 20px; font-family: 'Cormorant Garamond', serif; }
 .tiptap h3 { font-size: 14px; font-weight: 500; margin-bottom: 8px; margin-top: 16px; }
 .tiptap p  { font-size: 13px; line-height: 1.8; margin-bottom: 10px; }
 .tiptap ul, .tiptap ol { margin: 8px 0 10px 20px; font-size: 13px; line-height: 1.8; }
 .tiptap table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 12px; }
-.tiptap th { background: var(--color-bg-secondary); padding: 7px 10px; border: 0.5px solid var(--color-border-secondary); font-weight: 500; text-align: left; }
+.tiptap th { background: var(--cream); padding: 7px 10px; border: 0.5px solid var(--color-border-secondary); font-weight: 500; text-align: left; }
 .tiptap td { padding: 7px 10px; border: 0.5px solid var(--color-border-secondary); vertical-align: top; }
 .tiptap p.is-editor-empty:first-child::before {
   content: attr(data-placeholder);
-  color: var(--color-text-tertiary);
+  color: var(--slate-light);
   float: left;
   height: 0;
   pointer-events: none;
@@ -55,20 +75,20 @@ body {
 
 /* Variable highlights */
 .tiptap .variable-tag {
-  background: #E6F1FB;
-  color: #185FA5;
-  border: 0.5px solid #85B7EB;
+  background: var(--teal-bg);
+  color: var(--teal-dark);
+  border: 0.5px solid var(--teal-light);
   border-radius: 3px;
   padding: 0 4px;
   font-family: monospace;
   font-size: 12px;
 }
 .tiptap .variable-tag.undefined {
-  background: #FAEEDA;
-  color: #854F0B;
-  border-color: #FAC775;
+  background: rgba(200,169,110,0.15);
+  color: #7a5a10;
+  border-color: var(--accent);
 }
 
 /* Scrollbar */
 ::-webkit-scrollbar { width: 4px; height: 4px; }
-::-webkit-scrollbar-thumb { background: var(--color-border-secondary); border-radius: 2px; }
+::-webkit-scrollbar-thumb { background: var(--slate-light); border-radius: 2px; opacity: 0.5; }

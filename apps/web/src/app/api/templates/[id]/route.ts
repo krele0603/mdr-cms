@@ -91,12 +91,23 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
   )
   if (inUse) {
     return NextResponse.json(
-      { error: 'This template is used in one or more project records and cannot be deleted.' },
+      { error: 'This template is used in one or more project records and cannot be deleted. Delete those projects first.' },
       { status: 409 }
     )
   }
 
-  // Delete versions first (cascade would handle it but being explicit)
+  // Also check list_documents references
+  const inList = await queryOne(
+    `SELECT id FROM list_documents WHERE template_id = $1::uuid LIMIT 1`,
+    [params.id]
+  )
+  if (inList) {
+    return NextResponse.json(
+      { error: 'This template is used in one or more TF structures. Remove it from those structures first.' },
+      { status: 409 }
+    )
+  }
+
   await query(`DELETE FROM template_versions WHERE template_id = $1::uuid`, [params.id])
   await query(`DELETE FROM templates WHERE id = $1::uuid`, [params.id])
 

@@ -50,6 +50,7 @@ export default function ListsPage() {
   const [templates, setTemplates] = useState<Template[]>([])
   const [templatesLoading, setTemplatesLoading] = useState(false)
   const [templateSearch, setTemplateSearch] = useState('')
+  const [filterAnnex, setFilterAnnex] = useState<string>('')
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null)
   const [selectedAnnex, setSelectedAnnex] = useState('')
   const [savingDoc, setSavingDoc] = useState(false)
@@ -97,13 +98,13 @@ export default function ListsPage() {
     setSelectedTemplate(null)
     setSelectedAnnex(activeAnnex)
     setTemplateSearch('')
+    setFilterAnnex('')
     setAddDocError(null)
     loadTemplates()
   }
 
   function selectTemplate(t: Template) {
     setSelectedTemplate(t)
-    // Default annex to template's annex, or current active annex if none
     setSelectedAnnex(t.annex || activeAnnex)
   }
 
@@ -166,16 +167,16 @@ export default function ListsPage() {
     await loadDocs(activeListId)
   }
 
-  // Filter templates by search + exclude already-in-list ones
+  // Filter templates: exclude already-in-list, apply search + annex filter
   const alreadyInList = new Set(docs.map(d => d.template_id).filter(Boolean))
   const filteredTemplates = templates.filter(t => {
     if (alreadyInList.has(t.id)) return false
+    if (filterAnnex && t.annex !== filterAnnex) return false
     if (!templateSearch.trim()) return true
     const q = templateSearch.toLowerCase()
     return t.name.toLowerCase().includes(q) || t.tag_code.toLowerCase().includes(q)
   })
 
-  const activeList = lists.find(l => l.id === activeListId)
   const annexDocs = docs.filter(d => d.annex === activeAnnex)
   const annexCounts = ANNEXES.reduce((acc, a) => {
     acc[a] = docs.filter(d => d.annex === a).length
@@ -304,7 +305,7 @@ export default function ListsPage() {
           display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 20,
         }} onClick={() => !savingDoc && setShowAddDoc(false)}>
           <div style={{
-            background: '#fff', borderRadius: 14, width: '100%', maxWidth: 500,
+            background: '#fff', borderRadius: 14, width: '100%', maxWidth: 520,
             border: '0.5px solid rgba(0,0,0,0.12)', boxShadow: '0 8px 32px rgba(0,0,0,0.14)',
             display: 'flex', flexDirection: 'column', maxHeight: '80vh',
           }} onClick={e => e.stopPropagation()}>
@@ -315,16 +316,34 @@ export default function ListsPage() {
               <button onClick={() => setShowAddDoc(false)} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#6b6a64' }}>×</button>
             </div>
 
-            {/* Search */}
-            <div style={{ padding: '12px 20px', borderBottom: '0.5px solid rgba(0,0,0,0.06)', flexShrink: 0 }}>
+            {/* Search + annex filter */}
+            <div style={{ padding: '12px 20px', borderBottom: '0.5px solid rgba(0,0,0,0.06)', flexShrink: 0, display: 'flex', gap: 8 }}>
               <input
                 value={templateSearch}
                 onChange={e => setTemplateSearch(e.target.value)}
-                placeholder="Search templates by name or tag…"
+                placeholder="Search by name or tag…"
                 autoFocus
-                style={{ width: '100%', height: 34, padding: '0 10px', fontSize: 13, border: '0.5px solid rgba(0,0,0,0.18)', borderRadius: 8, outline: 'none', boxSizing: 'border-box' as const }}
+                style={{ flex: 1, height: 34, padding: '0 10px', fontSize: 13, border: '0.5px solid rgba(0,0,0,0.18)', borderRadius: 8, outline: 'none', boxSizing: 'border-box' as const }}
               />
+              <select
+                value={filterAnnex}
+                onChange={e => setFilterAnnex(e.target.value)}
+                style={{ height: 34, padding: '0 8px', fontSize: 12, border: '0.5px solid rgba(0,0,0,0.18)', borderRadius: 8, background: '#fff', cursor: 'pointer', minWidth: 120 }}
+              >
+                <option value="">All annexes</option>
+                {ANNEXES.map(a => <option key={a} value={a}>{a}</option>)}
+                <option value="__none__">Unassigned</option>
+              </select>
             </div>
+
+            {/* Results count */}
+            {!templatesLoading && (
+              <div style={{ padding: '6px 20px', fontSize: 11, color: '#9b9991', flexShrink: 0, borderBottom: '0.5px solid rgba(0,0,0,0.04)' }}>
+                {filteredTemplates.length} template{filteredTemplates.length !== 1 ? 's' : ''}
+                {filterAnnex && filterAnnex !== '__none__' ? ` in ${filterAnnex}` : filterAnnex === '__none__' ? ' unassigned' : ''}
+                {templateSearch ? ` matching "${templateSearch}"` : ''}
+              </div>
+            )}
 
             {/* Template list */}
             <div style={{ flex: 1, overflowY: 'auto' }}>
@@ -332,7 +351,7 @@ export default function ListsPage() {
                 <div style={{ padding: 32, textAlign: 'center', color: '#9b9991', fontSize: 13 }}>Loading templates…</div>
               ) : filteredTemplates.length === 0 ? (
                 <div style={{ padding: 32, textAlign: 'center', color: '#9b9991', fontSize: 13 }}>
-                  {templateSearch ? 'No templates match your search.' : 'All templates are already in this list.'}
+                  {templateSearch || filterAnnex ? 'No templates match your filters.' : 'All templates are already in this list.'}
                 </div>
               ) : filteredTemplates.map(t => {
                 const isSelected = selectedTemplate?.id === t.id
@@ -361,24 +380,24 @@ export default function ListsPage() {
                       <div style={{ fontSize: 13, fontWeight: isSelected ? 500 : 400, color: isSelected ? '#0C447C' : '#1a1a18' }}>{t.name}</div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
                         <span style={{ fontSize: 11, color: '#9b9991', fontFamily: 'monospace' }}>${t.tag_code}</span>
-                        {t.annex && (
+                        {t.annex ? (
                           <span style={{ fontSize: 10, padding: '1px 5px', borderRadius: 3, background: '#f1efe8', color: '#6b6a64', border: '0.5px solid #D3D1C7' }}>{t.annex}</span>
+                        ) : (
+                          <span style={{ fontSize: 10, color: '#ccc' }}>no annex</span>
                         )}
                       </div>
                     </div>
 
-                    {isSelected && (
-                      <div style={{ color: '#185FA5', fontSize: 16, flexShrink: 0 }}>✓</div>
-                    )}
+                    {isSelected && <div style={{ color: '#185FA5', fontSize: 16, flexShrink: 0 }}>✓</div>}
                   </div>
                 )
               })}
             </div>
 
-            {/* Annex selector + confirm — shown when template is selected */}
+            {/* Annex selector + confirm */}
             {selectedTemplate && (
               <div style={{ padding: '14px 20px', borderTop: '0.5px solid rgba(0,0,0,0.08)', background: '#f8f7f4', flexShrink: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: addDocError ? 10 : 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: 11, fontWeight: 500, color: '#5F5E5A', marginBottom: 4 }}>Place in annex</div>
                     <select
