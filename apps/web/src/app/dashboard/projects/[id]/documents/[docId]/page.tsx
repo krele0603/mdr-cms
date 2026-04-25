@@ -26,22 +26,26 @@ interface DocData {
   template_version_id: string | null; template_version: string | null
   example_content: any; template_name: string | null
   tag_code: string | null; project_name: string; device_name: string
+  revision?: number
+}
+
+interface Comment {
+  id: string; parent_id: string | null; content: string
+  resolved: boolean; resolved_at: string | null; created_at: string
+  author_id: string; author_name: string; author_role: string
+  resolved_by_name: string | null
 }
 
 type SaveState = 'saved' | 'saving' | 'unsaved' | 'error'
 
-interface TocItem {
-  id: string
-  textContent: string
-  level: number
-  itemIndex: string
-}
+interface TocItem { id: string; textContent: string; level: number; itemIndex: number }
 
 const DOC_STATUS: Record<string, { bg: string; color: string; border: string; label: string }> = {
-  draft:      { bg: '#f5f2ee', color: '#5a6472', border: 'rgba(90,100,114,0.3)', label: 'Draft' },
-  inprogress: { bg: 'rgba(200,169,110,0.12)', color: '#8a6020', border: 'rgba(200,169,110,0.4)', label: 'In progress' },
-  review:     { bg: 'rgba(78,140,140,0.1)', color: '#2e5f5f', border: 'rgba(78,140,140,0.3)', label: 'In review' },
-  approved:   { bg: 'rgba(58,122,90,0.1)', color: '#3a7a5a', border: 'rgba(58,122,90,0.3)', label: 'Approved' },
+  draft:       { bg: '#f5f2ee',                   color: '#5a6472', border: 'rgba(90,100,114,0.3)',   label: 'Draft' },
+  inprogress:  { bg: 'rgba(200,169,110,0.12)',     color: '#8a6020', border: 'rgba(200,169,110,0.4)', label: 'In progress' },
+  review:      { bg: 'rgba(78,140,140,0.1)',       color: '#2e5f5f', border: 'rgba(78,140,140,0.3)',  label: 'In review' },
+  approved:    { bg: 'rgba(58,122,90,0.1)',        color: '#3a7a5a', border: 'rgba(58,122,90,0.3)',   label: 'Approved' },
+  superseded:  { bg: 'rgba(90,100,114,0.08)',      color: '#8a96a2', border: 'rgba(90,100,114,0.2)', label: 'Superseded' },
 }
 
 const DEFAULT_SIZES = { p: 14, h1: 26, h2: 20, h3: 15, h4: 14 }
@@ -72,14 +76,15 @@ const I = {
   AlignJust:   () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>,
   Table:       () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="9" x2="9" y2="21"/><line x1="15" y1="9" x2="15" y2="21"/></svg>,
   Blockquote:  () => <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M3 21c3 0 7-1 7-8V5c0-1.25-.756-2.017-2-2H4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2 1 0 1 0 1 1v1c0 1-1 2-2 2s-1 .008-1 1.031V20c0 1 0 1 1 1z"/><path d="M15 21c3 0 7-1 7-8V5c0-1.25-.757-2.017-2-2h-4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2h.75c0 2.25.25 4-2.75 4v3c0 1 0 1 1 1z"/></svg>,
-  HRule:       () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="3" y1="12" x2="21" y2="12"/></svg>,
   Undo:        () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>,
   Redo:        () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3L21 13"/></svg>,
   ChevDown:    () => <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="6 9 12 15 18 9"/></svg>,
   ToC:         () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="3" y1="5" x2="21" y2="5"/><line x1="6" y1="9" x2="21" y2="9"/><line x1="6" y1="13" x2="21" y2="13"/><line x1="9" y1="17" x2="21" y2="17"/><line x1="3" y1="5" x2="3" y2="17"/></svg>,
+  Comment:     () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>,
+  Download:    () => <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>,
 }
 
-// ── Shared button ─────────────────────────────────────────────────────────────
+// ── Shared primitives ─────────────────────────────────────────────────────────
 
 function Btn({ active, disabled, onClick, title, children, danger }: {
   active?: boolean; disabled?: boolean; onClick: () => void
@@ -89,14 +94,7 @@ function Btn({ active, disabled, onClick, title, children, danger }: {
     <button
       onMouseDown={e => { e.preventDefault(); if (!disabled) onClick() }}
       disabled={disabled} title={title}
-      style={{
-        height: 30, minWidth: 30, padding: '0 6px',
-        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3,
-        border: 'none', borderRadius: 5,
-        background: active ? 'rgba(78,140,140,0.15)' : 'transparent',
-        color: active ? '#2e5f5f' : disabled ? '#ccc' : danger ? '#943030' : '#2e3640',
-        cursor: disabled ? 'default' : 'pointer', fontSize: 12,
-      }}
+      style={{ height: 30, minWidth: 30, padding: '0 6px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3, border: 'none', borderRadius: 5, background: active ? 'rgba(78,140,140,0.15)' : 'transparent', color: active ? '#2e5f5f' : disabled ? '#ccc' : danger ? '#943030' : '#2e3640', cursor: disabled ? 'default' : 'pointer', fontSize: 12 }}
       onMouseEnter={e => { if (!disabled && !active) e.currentTarget.style.background = 'rgba(0,0,0,0.05)' }}
       onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent' }}
     >{children}</button>
@@ -107,17 +105,17 @@ function Sep() {
   return <div style={{ width: 1, height: 20, background: 'rgba(0,0,0,0.12)', margin: '0 3px', flexShrink: 0 }} />
 }
 
-// ── Table submenu ─────────────────────────────────────────────────────────────
+function Overlay({ onClose }: { onClose: () => void }) {
+  return <div style={{ position: 'fixed', inset: 0, zIndex: 9998 }} onClick={onClose} />
+}
+
+// ── Submenus ──────────────────────────────────────────────────────────────────
 
 function TableMenu({ editor, onClose, pos }: { editor: any; onClose: () => void; pos: { top: number; left: number } }) {
   const inTable = editor.can().addColumnAfter()
-  const Section = ({ title }: { title: string }) => (
-    <div style={{ fontSize: 10, fontWeight: 600, color: '#8a96a2', textTransform: 'uppercase', letterSpacing: '0.08em', padding: '8px 12px 4px' }}>{title}</div>
-  )
+  const S = ({ title }: { title: string }) => <div style={{ fontSize: 10, fontWeight: 600, color: '#8a96a2', textTransform: 'uppercase', letterSpacing: '0.08em', padding: '8px 12px 4px' }}>{title}</div>
   const Item = ({ label, onClick, danger, disabled }: { label: string; onClick: () => void; danger?: boolean; disabled?: boolean }) => (
-    <button
-      onMouseDown={e => { e.preventDefault(); if (!disabled) { onClick(); onClose() } }}
-      disabled={disabled}
+    <button onMouseDown={e => { e.preventDefault(); if (!disabled) { onClick(); onClose() } }} disabled={disabled}
       style={{ display: 'block', width: '100%', textAlign: 'left', padding: '6px 12px', fontSize: 12, border: 'none', background: 'transparent', cursor: disabled ? 'default' : 'pointer', color: disabled ? '#ccc' : danger ? '#943030' : '#1a1f24', borderRadius: 4 }}
       onMouseEnter={e => { if (!disabled) e.currentTarget.style.background = 'rgba(0,0,0,0.04)' }}
       onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
@@ -125,34 +123,29 @@ function TableMenu({ editor, onClose, pos }: { editor: any; onClose: () => void;
   )
   return (
     <div style={{ position: 'fixed', top: pos.top, left: pos.left, zIndex: 9999, background: '#fff', border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 10, boxShadow: '0 4px 24px rgba(0,0,0,0.14)', minWidth: 200, padding: '6px 0' }}>
-      <Section title="Insert" />
+      <S title="Insert" />
       <Item label="Insert table (3×3)" onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()} />
       <Item label="Insert table (5×3)" onClick={() => editor.chain().focus().insertTable({ rows: 5, cols: 3, withHeaderRow: true }).run()} />
       <div style={{ height: 1, background: 'rgba(0,0,0,0.08)', margin: '4px 0' }} />
-      <Section title="Columns" />
+      <S title="Columns" />
       <Item label="Add column before" disabled={!inTable} onClick={() => editor.chain().focus().addColumnBefore().run()} />
       <Item label="Add column after"  disabled={!inTable} onClick={() => editor.chain().focus().addColumnAfter().run()} />
       <Item label="Delete column"     disabled={!inTable} danger onClick={() => editor.chain().focus().deleteColumn().run()} />
       <div style={{ height: 1, background: 'rgba(0,0,0,0.08)', margin: '4px 0' }} />
-      <Section title="Rows" />
+      <S title="Rows" />
       <Item label="Add row before" disabled={!inTable} onClick={() => editor.chain().focus().addRowBefore().run()} />
       <Item label="Add row after"  disabled={!inTable} onClick={() => editor.chain().focus().addRowAfter().run()} />
       <Item label="Delete row"     disabled={!inTable} danger onClick={() => editor.chain().focus().deleteRow().run()} />
       <div style={{ height: 1, background: 'rgba(0,0,0,0.08)', margin: '4px 0' }} />
-      <Section title="Table" />
+      <S title="Table" />
       <Item label="Toggle header row" disabled={!inTable} onClick={() => editor.chain().focus().toggleHeaderRow().run()} />
       <Item label="Delete table" disabled={!inTable} danger onClick={() => editor.chain().focus().deleteTable().run()} />
     </div>
   )
 }
 
-// ── Font size panel ───────────────────────────────────────────────────────────
-
 function FontPanel({ sizes, onChange, onClose, pos }: {
-  sizes: typeof DEFAULT_SIZES
-  onChange: (key: keyof typeof DEFAULT_SIZES, val: number) => void
-  onClose: () => void
-  pos: { top: number; left: number }
+  sizes: typeof DEFAULT_SIZES; onChange: (key: keyof typeof DEFAULT_SIZES, val: number) => void; onClose: () => void; pos: { top: number; left: number }
 }) {
   const rows: { key: keyof typeof DEFAULT_SIZES; label: string; style: React.CSSProperties }[] = [
     { key: 'p',  label: 'Normal text', style: { fontSize: sizes.p } },
@@ -182,6 +175,31 @@ function FontPanel({ sizes, onChange, onClose, pos }: {
   )
 }
 
+function TocMenu({ pos, onClose, showOutline, onToggleOutline, onInsertToc }: {
+  pos: { top: number; left: number }; onClose: () => void
+  showOutline: boolean; onToggleOutline: () => void; onInsertToc: () => void
+}) {
+  return (
+    <div style={{ position: 'fixed', top: pos.top, left: pos.left, zIndex: 9999, background: '#fff', border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 10, boxShadow: '0 4px 24px rgba(0,0,0,0.14)', minWidth: 220, padding: '6px 0' }}>
+      <button onMouseDown={e => { e.preventDefault(); onToggleOutline(); onClose() }}
+        style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 14px', fontSize: 12, border: 'none', background: 'transparent', cursor: 'pointer', color: '#1a1f24' }}
+        onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.04)' }}
+        onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}>
+        <div style={{ fontWeight: 500 }}>{showOutline ? 'Hide outline' : 'Show outline'}</div>
+        <div style={{ fontSize: 11, color: '#8a96a2', marginTop: 1 }}>Navigation panel with headings</div>
+      </button>
+      <div style={{ height: 1, background: 'rgba(0,0,0,0.08)', margin: '4px 0' }} />
+      <button onMouseDown={e => { e.preventDefault(); onInsertToc(); onClose() }}
+        style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 14px', fontSize: 12, border: 'none', background: 'transparent', cursor: 'pointer', color: '#1a1f24' }}
+        onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.04)' }}
+        onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}>
+        <div style={{ fontWeight: 500 }}>Insert Table of Contents</div>
+        <div style={{ fontSize: 11, color: '#8a96a2', marginTop: 1 }}>Add ToC block to document</div>
+      </button>
+    </div>
+  )
+}
+
 // ── Outline panel ─────────────────────────────────────────────────────────────
 
 function OutlinePanel({ items, onClose }: { items: TocItem[]; onClose: () => void }) {
@@ -193,34 +211,13 @@ function OutlinePanel({ items, onClose }: { items: TocItem[]; onClose: () => voi
       </div>
       <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
         {items.length === 0 ? (
-          <div style={{ padding: '20px 14px', fontSize: 12, color: '#8a96a2', lineHeight: 1.5 }}>
-            No headings yet. Add H1, H2, or H3 headings to see the outline.
-          </div>
+          <div style={{ padding: '20px 14px', fontSize: 12, color: '#8a96a2', lineHeight: 1.5 }}>No headings yet.</div>
         ) : items.map(item => (
-          <button
-            key={item.id}
-            onClick={() => {
-              const el = document.getElementById(item.id)
-              if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
-            }}
-            style={{
-              display: 'block', width: '100%', textAlign: 'left',
-              padding: `5px 14px 5px ${8 + (item.level - 1) * 12}px`,
-              fontSize: item.level === 1 ? 12 : 11,
-              fontWeight: item.level === 1 ? 600 : item.level === 2 ? 500 : 400,
-              color: item.level === 1 ? '#1a1f24' : item.level === 2 ? '#2e3640' : '#5a6472',
-              border: 'none', background: 'transparent', cursor: 'pointer',
-              borderLeft: item.level === 1 ? '2px solid transparent' : 'none',
-              lineHeight: 1.4,
-            }}
-            onMouseEnter={e => {
-              e.currentTarget.style.background = 'rgba(78,140,140,0.08)'
-              if (item.level === 1) e.currentTarget.style.borderLeftColor = '#4e8c8c'
-            }}
-            onMouseLeave={e => {
-              e.currentTarget.style.background = 'transparent'
-              if (item.level === 1) e.currentTarget.style.borderLeftColor = 'transparent'
-            }}
+          <button key={item.id}
+            onClick={() => { const el = document.getElementById(item.id); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }) }}
+            style={{ display: 'block', width: '100%', textAlign: 'left', padding: `5px 14px 5px ${8 + (item.level - 1) * 12}px`, fontSize: item.level === 1 ? 12 : 11, fontWeight: item.level === 1 ? 600 : item.level === 2 ? 500 : 400, color: item.level === 1 ? '#1a1f24' : item.level === 2 ? '#2e3640' : '#5a6472', border: 'none', background: 'transparent', cursor: 'pointer', lineHeight: 1.4 }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(78,140,140,0.08)' }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
           >
             {item.level > 1 && <span style={{ color: '#d8d4ce', marginRight: 4 }}>{'—'.repeat(item.level - 1)}</span>}
             {item.textContent}
@@ -234,30 +231,22 @@ function OutlinePanel({ items, onClose }: { items: TocItem[]; onClose: () => voi
 // ── Toolbar ───────────────────────────────────────────────────────────────────
 
 function Toolbar({ editor, sizes, onSizeChange, showOutline, onToggleOutline, onInsertToc }: {
-  editor: any
-  sizes: typeof DEFAULT_SIZES
-  onSizeChange: (key: keyof typeof DEFAULT_SIZES, val: number) => void
-  showOutline: boolean
-  onToggleOutline: () => void
-  onInsertToc: () => void
+  editor: any; sizes: typeof DEFAULT_SIZES; onSizeChange: (k: keyof typeof DEFAULT_SIZES, v: number) => void
+  showOutline: boolean; onToggleOutline: () => void; onInsertToc: () => void
 }) {
   const [showTable, setShowTable] = useState(false)
   const [showFont, setShowFont] = useState(false)
   const [showToc, setShowToc] = useState(false)
-  const tableBtnRef = useRef<HTMLDivElement>(null)
-  const fontBtnRef = useRef<HTMLDivElement>(null)
-  const tocBtnRef = useRef<HTMLDivElement>(null)
+  const tableRef = useRef<HTMLDivElement>(null)
+  const fontRef = useRef<HTMLDivElement>(null)
+  const tocRef = useRef<HTMLDivElement>(null)
   const [tablePos, setTablePos] = useState({ top: 0, left: 0 })
   const [fontPos, setFontPos] = useState({ top: 0, left: 0 })
   const [tocPos, setTocPos] = useState({ top: 0, left: 0 })
 
   if (!editor) return null
 
-  const headingValue = editor.isActive('heading', { level: 1 }) ? '1'
-    : editor.isActive('heading', { level: 2 }) ? '2'
-    : editor.isActive('heading', { level: 3 }) ? '3'
-    : editor.isActive('heading', { level: 4 }) ? '4' : '0'
-
+  const headingValue = editor.isActive('heading', { level: 1 }) ? '1' : editor.isActive('heading', { level: 2 }) ? '2' : editor.isActive('heading', { level: 3 }) ? '3' : editor.isActive('heading', { level: 4 }) ? '4' : '0'
   const currentFont = FONTS.find(f => editor.isActive('textStyle', { fontFamily: f.value }))?.value || FONTS[0].value
 
   function getPos(ref: React.RefObject<HTMLDivElement>) {
@@ -266,63 +255,25 @@ function Toolbar({ editor, sizes, onSizeChange, showOutline, onToggleOutline, on
     return { top: r.bottom + 4, left: r.left }
   }
 
-  const Overlay = ({ onClose }: { onClose: () => void }) => (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 9998 }} onClick={onClose} />
-  )
-
-  // ToC submenu
-  const TocMenu = ({ pos, onClose }: { pos: { top: number; left: number }; onClose: () => void }) => (
-    <div style={{ position: 'fixed', top: pos.top, left: pos.left, zIndex: 9999, background: '#fff', border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 10, boxShadow: '0 4px 24px rgba(0,0,0,0.14)', minWidth: 220, padding: '6px 0' }}>
-      <button
-        onMouseDown={e => { e.preventDefault(); onToggleOutline(); onClose() }}
-        style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 14px', fontSize: 12, border: 'none', background: 'transparent', cursor: 'pointer', color: '#1a1f24' }}
-        onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.04)' }}
-        onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
-      >
-        <div style={{ fontWeight: 500 }}>{showOutline ? 'Hide outline' : 'Show outline'}</div>
-        <div style={{ fontSize: 11, color: '#8a96a2', marginTop: 1 }}>Navigation panel with headings</div>
-      </button>
-      <div style={{ height: 1, background: 'rgba(0,0,0,0.08)', margin: '4px 0' }} />
-      <button
-        onMouseDown={e => { e.preventDefault(); onInsertToc(); onClose() }}
-        style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 14px', fontSize: 12, border: 'none', background: 'transparent', cursor: 'pointer', color: '#1a1f24' }}
-        onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.04)' }}
-        onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
-      >
-        <div style={{ fontWeight: 500 }}>Insert Table of Contents</div>
-        <div style={{ fontSize: 11, color: '#8a96a2', marginTop: 1 }}>Add ToC block to document</div>
-      </button>
-    </div>
-  )
-
   return (
-    <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1, padding: '4px 10px', borderBottom: '1px solid #e0ddd8', background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+    <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'nowrap', gap: 1, padding: '4px 10px', borderBottom: '1px solid #e0ddd8', background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.06)', overflowX: 'auto' }}>
       <Btn title="Undo" disabled={!editor.can().undo()} onClick={() => editor.chain().focus().undo().run()}><I.Undo /></Btn>
       <Btn title="Redo" disabled={!editor.can().redo()} onClick={() => editor.chain().focus().redo().run()}><I.Redo /></Btn>
       <Sep />
-
       <select value={headingValue} onChange={e => { const v = e.target.value; if (v === '0') editor.chain().focus().setParagraph().run(); else editor.chain().focus().toggleHeading({ level: parseInt(v) as 1|2|3|4 }).run() }}
         style={{ height: 28, padding: '0 6px', fontSize: 12, border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 5, background: '#fff', cursor: 'pointer', color: '#2e3640' }}>
-        <option value="0">Normal text</option>
-        <option value="1">Heading 1</option>
-        <option value="2">Heading 2</option>
-        <option value="3">Heading 3</option>
-        <option value="4">Heading 4</option>
+        <option value="0">Normal text</option><option value="1">Heading 1</option><option value="2">Heading 2</option><option value="3">Heading 3</option><option value="4">Heading 4</option>
       </select>
-
       <select value={currentFont} onChange={e => editor.chain().focus().setFontFamily(e.target.value).run()}
         style={{ height: 28, padding: '0 6px', fontSize: 12, border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 5, background: '#fff', cursor: 'pointer', color: '#2e3640', maxWidth: 160, marginLeft: 4 }}>
         {FONTS.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
       </select>
-
-      <div ref={fontBtnRef}>
-        <Btn title="Font sizes" active={showFont} onClick={() => { setFontPos(getPos(fontBtnRef)); setShowFont(v => !v); setShowTable(false); setShowToc(false) }}>
-          <span style={{ fontSize: 12, fontWeight: 600 }}>Aa</span>
-          <I.ChevDown />
+      <div ref={fontRef}>
+        <Btn title="Font sizes" active={showFont} onClick={() => { setFontPos(getPos(fontRef)); setShowFont(v => !v); setShowTable(false); setShowToc(false) }}>
+          <span style={{ fontSize: 12, fontWeight: 600 }}>Aa</span><I.ChevDown />
         </Btn>
       </div>
       {showFont && (<><Overlay onClose={() => setShowFont(false)} /><FontPanel sizes={sizes} onChange={onSizeChange} onClose={() => setShowFont(false)} pos={fontPos} /></>)}
-
       <Sep />
       <Btn title="Bold" active={editor.isActive('bold')} onClick={() => editor.chain().focus().toggleBold().run()}><I.Bold /></Btn>
       <Btn title="Italic" active={editor.isActive('italic')} onClick={() => editor.chain().focus().toggleItalic().run()}><I.Italic /></Btn>
@@ -339,24 +290,125 @@ function Toolbar({ editor, sizes, onSizeChange, showOutline, onToggleOutline, on
       <Btn title="Align right" active={editor.isActive({ textAlign: 'right' })} onClick={() => editor.chain().focus().setTextAlign('right').run()}><I.AlignRight /></Btn>
       <Btn title="Justify" active={editor.isActive({ textAlign: 'justify' })} onClick={() => editor.chain().focus().setTextAlign('justify').run()}><I.AlignJust /></Btn>
       <Sep />
-
-      <div ref={tableBtnRef}>
-        <Btn title="Table" active={showTable} onClick={() => { setTablePos(getPos(tableBtnRef)); setShowTable(v => !v); setShowFont(false); setShowToc(false) }}>
+      <div ref={tableRef}>
+        <Btn title="Table" active={showTable} onClick={() => { setTablePos(getPos(tableRef)); setShowTable(v => !v); setShowFont(false); setShowToc(false) }}>
           <I.Table /><I.ChevDown />
         </Btn>
       </div>
       {showTable && (<><Overlay onClose={() => setShowTable(false)} /><TableMenu editor={editor} onClose={() => setShowTable(false)} pos={tablePos} /></>)}
-
       <Sep />
-
-      {/* ToC button */}
-      <div ref={tocBtnRef}>
-        <Btn title="Table of Contents" active={showToc || showOutline} onClick={() => { setTocPos(getPos(tocBtnRef)); setShowToc(v => !v); setShowTable(false); setShowFont(false) }}>
+      <div ref={tocRef}>
+        <Btn title="Table of Contents" active={showToc || showOutline} onClick={() => { setTocPos(getPos(tocRef)); setShowToc(v => !v); setShowTable(false); setShowFont(false) }}>
           <I.ToC /><I.ChevDown />
         </Btn>
       </div>
-      {showToc && (<><Overlay onClose={() => setShowToc(false)} /><TocMenu pos={tocPos} onClose={() => setShowToc(false)} /></>)}
+      {showToc && (<><Overlay onClose={() => setShowToc(false)} /><TocMenu pos={tocPos} onClose={() => setShowToc(false)} showOutline={showOutline} onToggleOutline={onToggleOutline} onInsertToc={onInsertToc} /></>)}
+    </div>
+  )
+}
 
+// ── Comments panel ────────────────────────────────────────────────────────────
+
+function CommentsPanel({ comments, commentsLoading, newComment, setNewComment, replyTo, setReplyTo, postingComment, postComment, resolveComment, onClose }: {
+  comments: Comment[]; commentsLoading: boolean; newComment: string; setNewComment: (v: string) => void
+  replyTo: string | null; setReplyTo: (v: string | null) => void; postingComment: boolean
+  postComment: (parentId?: string) => void; resolveComment: (id: string, resolved: boolean) => void; onClose: () => void
+}) {
+  const unresolvedCount = comments.filter(c => !c.resolved).length
+  const topLevel = comments.filter(c => !c.parent_id)
+
+  return (
+    <div style={{ width: 300, flexShrink: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', borderLeft: '1px solid #d8d4ce', background: '#faf9f7' }}>
+      {/* Header */}
+      <div style={{ padding: '10px 14px', borderBottom: '1px solid #e0ddd8', background: '#f5f2ee', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <span style={{ fontSize: 11, fontWeight: 600, color: '#5a6472', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+          Comments {unresolvedCount > 0 && `(${unresolvedCount})`}
+        </span>
+        <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#8a96a2', fontSize: 18, lineHeight: 1 }}>×</button>
+      </div>
+
+      {/* List */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
+        {commentsLoading ? (
+          <div style={{ padding: 20, textAlign: 'center', fontSize: 12, color: '#8a96a2' }}>Loading…</div>
+        ) : topLevel.length === 0 ? (
+          <div style={{ padding: '24px 14px', textAlign: 'center', fontSize: 12, color: '#8a96a2', lineHeight: 1.6 }}>
+            No comments yet.<br />Be the first to add one.
+          </div>
+        ) : topLevel.map(c => {
+          const replies = comments.filter(r => r.parent_id === c.id)
+          const isWarning = c.content.startsWith('⚠')
+          return (
+            <div key={c.id} style={{ padding: '10px 14px', borderBottom: '0.5px solid rgba(0,0,0,0.06)', opacity: c.resolved ? 0.55 : 1 }}>
+              {/* Author row */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                  <div style={{ width: 24, height: 24, borderRadius: '50%', background: isWarning ? 'rgba(148,48,48,0.12)' : 'rgba(78,140,140,0.15)', color: isWarning ? '#943030' : '#2e5f5f', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700, flexShrink: 0 }}>
+                    {c.author_name?.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2)}
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: '#1a1f24' }}>{c.author_name}</div>
+                    <div style={{ fontSize: 10, color: '#8a96a2' }}>{new Date(c.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</div>
+                  </div>
+                </div>
+                <button onClick={() => resolveComment(c.id, !c.resolved)} title={c.resolved ? 'Unresolve' : 'Resolve'}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: c.resolved ? '#3a7a5a' : '#8a96a2', fontSize: 16, lineHeight: 1, flexShrink: 0 }}>
+                  {c.resolved ? '✓' : '○'}
+                </button>
+              </div>
+              {/* Body */}
+              <div style={{ fontSize: 12, color: isWarning ? '#943030' : '#2e3640', lineHeight: 1.6, background: isWarning ? 'rgba(148,48,48,0.06)' : 'transparent', padding: isWarning ? '6px 8px' : 0, borderRadius: 4, whiteSpace: 'pre-wrap' }}>
+                {c.content}
+              </div>
+              {/* Replies */}
+              {replies.map(r => (
+                <div key={r.id} style={{ marginTop: 8, paddingLeft: 14, borderLeft: '2px solid #e0ddd8' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 2 }}>
+                    <div style={{ width: 18, height: 18, borderRadius: '50%', background: 'rgba(78,140,140,0.1)', color: '#2e5f5f', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 8, fontWeight: 700 }}>
+                      {r.author_name?.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2)}
+                    </div>
+                    <span style={{ fontSize: 10, fontWeight: 600, color: '#5a6472' }}>{r.author_name}</span>
+                    <span style={{ fontSize: 10, color: '#8a96a2' }}>{new Date(r.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span>
+                  </div>
+                  <div style={{ fontSize: 11, color: '#2e3640', lineHeight: 1.5 }}>{r.content}</div>
+                </div>
+              ))}
+              {/* Reply */}
+              {!c.resolved && (
+                <button onClick={() => setReplyTo(replyTo === c.id ? null : c.id)}
+                  style={{ marginTop: 7, background: 'none', border: 'none', fontSize: 11, color: '#4e8c8c', cursor: 'pointer', padding: 0 }}>
+                  {replyTo === c.id ? 'Cancel reply' : '↩ Reply'}
+                </button>
+              )}
+              {replyTo === c.id && (
+                <div style={{ marginTop: 8 }}>
+                  <textarea value={newComment} onChange={e => setNewComment(e.target.value)} placeholder="Write a reply…" autoFocus
+                    style={{ width: '100%', height: 56, padding: '6px 8px', fontSize: 11, border: '0.5px solid rgba(0,0,0,0.18)', borderRadius: 6, outline: 'none', resize: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }} />
+                  <button onClick={() => postComment(c.id)} disabled={postingComment || !newComment.trim()}
+                    style={{ marginTop: 4, height: 26, padding: '0 12px', fontSize: 11, background: '#4e8c8c', border: 'none', borderRadius: 5, color: '#fff', cursor: 'pointer', opacity: postingComment || !newComment.trim() ? 0.6 : 1 }}>
+                    {postingComment ? 'Posting…' : 'Reply'}
+                  </button>
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      {/* New comment */}
+      <div style={{ padding: '10px 14px', borderTop: '1px solid #e0ddd8', background: '#fff' }}>
+        <textarea
+          value={replyTo ? '' : newComment}
+          onChange={e => { if (!replyTo) setNewComment(e.target.value) }}
+          placeholder={replyTo ? 'Replying above…' : 'Add a comment…'}
+          disabled={!!replyTo}
+          style={{ width: '100%', height: 64, padding: '8px 10px', fontSize: 12, border: '0.5px solid rgba(0,0,0,0.18)', borderRadius: 6, outline: 'none', resize: 'none', fontFamily: 'inherit', boxSizing: 'border-box', opacity: replyTo ? 0.5 : 1 }}
+        />
+        <button onClick={() => postComment()} disabled={postingComment || !newComment.trim() || !!replyTo}
+          style={{ marginTop: 6, width: '100%', height: 30, fontSize: 12, background: '#4e8c8c', border: 'none', borderRadius: 6, color: '#fff', cursor: 'pointer', opacity: postingComment || !newComment.trim() || !!replyTo ? 0.6 : 1, fontWeight: 500 }}>
+          {postingComment ? 'Posting…' : 'Post comment'}
+        </button>
+      </div>
     </div>
   )
 }
@@ -389,8 +441,6 @@ function buildEditorStyles(sizes: typeof DEFAULT_SIZES) {
     .toc-block h4 { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: #8a96a2; margin: 0 0 10px; border: none; }
     .toc-block ol { margin: 0; padding-left: 18px; }
     .toc-block li { font-size: 13px; margin-bottom: 4px; color: #2e3640; }
-    .toc-block li.toc-h2 { padding-left: 12px; font-size: 12px; color: #5a6472; }
-    .toc-block li.toc-h3 { padding-left: 24px; font-size: 11px; color: #8a96a2; }
     .tableWrapper { overflow-x: auto; }
     .column-resize-handle { background-color: #4e8c8c; bottom: -2px; position: absolute; right: -2px; top: 0; width: 4px; pointer-events: none; }
   `
@@ -398,12 +448,9 @@ function buildEditorStyles(sizes: typeof DEFAULT_SIZES) {
 
 // ── Extensions ────────────────────────────────────────────────────────────────
 
-function makeExtensions(placeholder: string, onTocUpdate: (items: TocItem[]) => void) {
+function makeExtensions(placeholder: string, onTocUpdate: (items: any[]) => void) {
   return [
-    StarterKit,
-    TextStyle,
-    FontFamily,
-    Underline,
+    StarterKit, TextStyle, FontFamily, Underline,
     Highlight.configure({ multicolor: false }),
     TextAlign.configure({ types: ['heading', 'paragraph'] }),
     Table.configure({ resizable: true }),
@@ -417,7 +464,7 @@ function makeExtensions(placeholder: string, onTocUpdate: (items: TocItem[]) => 
   ]
 }
 
-// ── Main ──────────────────────────────────────────────────────────────────────
+// ── Main component ────────────────────────────────────────────────────────────
 
 export default function DocumentEditorPage() {
   const params = useParams()
@@ -430,26 +477,38 @@ export default function DocumentEditorPage() {
   const [saveState, setSaveState] = useState<SaveState>('saved')
   const [showReference, setShowReference] = useState(true)
   const [showOutline, setShowOutline] = useState(false)
+  const [showComments, setShowComments] = useState(false)
   const [docStatus, setDocStatus] = useState('draft')
   const [hasExample, setHasExample] = useState(false)
   const [userRole, setUserRole] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [exporting, setExporting] = useState(false)
+  const [approving, setApproving] = useState(false)
+  const [revising, setRevising] = useState(false)
   const [wordCount, setWordCount] = useState(0)
   const [sizes, setSizes] = useState(DEFAULT_SIZES)
   const [tocItems, setTocItems] = useState<TocItem[]>([])
 
+  // Comments state
+  const [comments, setComments] = useState<Comment[]>([])
+  const [commentsLoading, setCommentsLoading] = useState(false)
+  const [newComment, setNewComment] = useState('')
+  const [replyTo, setReplyTo] = useState<string | null>(null)
+  const [postingComment, setPostingComment] = useState(false)
+
+  // Request changes state
+  const [showRequestChanges, setShowRequestChanges] = useState(false)
+  const [changeReason, setChangeReason] = useState('')
+
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const latestContent = useRef<any>(null)
 
-  function handleSizeChange(key: keyof typeof DEFAULT_SIZES, val: number) {
-    setSizes(prev => ({ ...prev, [key]: val }))
-  }
-
+  // ── Load session ────────────────────────────────────────────────────────────
   useEffect(() => {
     fetch('/api/auth/session').then(r => r.ok ? r.json() : null).then(d => { if (d?.user) setUserRole(d.user.role) })
   }, [])
 
+  // ── Load document ───────────────────────────────────────────────────────────
   useEffect(() => {
     fetch(`/api/projects/${projectId}/documents/${docId}`)
       .then(r => r.ok ? r.json() : Promise.reject())
@@ -462,6 +521,40 @@ export default function DocumentEditorPage() {
       .catch(() => router.push(`/dashboard/projects/${projectId}`))
   }, [projectId, docId])
 
+  // ── Load comments ───────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (showComments) loadComments()
+  }, [showComments])
+
+  async function loadComments() {
+    setCommentsLoading(true)
+    try {
+      const res = await fetch(`/api/projects/${projectId}/documents/${docId}/comments`)
+      if (res.ok) setComments(await res.json())
+    } finally { setCommentsLoading(false) }
+  }
+
+  async function postComment(parentId?: string) {
+    if (!newComment.trim()) return
+    setPostingComment(true)
+    try {
+      const res = await fetch(`/api/projects/${projectId}/documents/${docId}/comments`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: newComment, parent_id: parentId || null }),
+      })
+      if (res.ok) { setNewComment(''); setReplyTo(null); loadComments() }
+    } finally { setPostingComment(false) }
+  }
+
+  async function resolveComment(commentId: string, resolved: boolean) {
+    await fetch(`/api/projects/${projectId}/documents/${docId}/comments/${commentId}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ resolved }),
+    })
+    loadComments()
+  }
+
+  // ── Save ────────────────────────────────────────────────────────────────────
   const save = useCallback(async (content: any) => {
     setSaveState('saving')
     try {
@@ -482,26 +575,7 @@ export default function DocumentEditorPage() {
     })
   }
 
-  
-  async function exportDoc(fmt: 'docx') {
-    setExporting(true)
-    try {
-      const res = await fetch(`/api/projects/${projectId}/documents/${docId}/export?format=${fmt}`)
-      if (!res.ok) throw new Error('Export failed')
-      const blob = await res.blob()
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = res.headers.get('Content-Disposition')?.match(/filename="(.+)"/)?.[1] || `document.${fmt}`
-      a.click()
-      URL.revokeObjectURL(url)
-    } catch (e: any) {
-      alert('Export failed: ' + e.message)
-    } finally {
-      setExporting(false)
-    }
-  }
-
+  // ── Approval actions ────────────────────────────────────────────────────────
   async function submitForReview() {
     setSubmitting(true)
     if (latestContent.current) { if (saveTimer.current) clearTimeout(saveTimer.current); await save(latestContent.current) }
@@ -509,17 +583,64 @@ export default function DocumentEditorPage() {
     setSubmitting(false)
   }
 
-  // Insert ToC as formatted HTML block
+  async function approveDoc() {
+    setApproving(true)
+    try {
+      const res = await fetch(`/api/projects/${projectId}/documents/${docId}/approve`, { method: 'POST' })
+      if (res.ok) { setDocStatus('approved'); loadComments() }
+    } finally { setApproving(false) }
+  }
+
+  async function requestChanges() {
+    if (!changeReason.trim()) return
+    const res = await fetch(`/api/projects/${projectId}/documents/${docId}/request-changes`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason: changeReason }),
+    })
+    if (res.ok) {
+      setDocStatus('inprogress'); setChangeReason(''); setShowRequestChanges(false)
+      if (showComments) loadComments()
+      else setShowComments(true)
+    }
+  }
+
+  async function reviseDoc() {
+    if (!confirm('Create a new revision? The approved version will be preserved and a new draft created.')) return
+    setRevising(true)
+    try {
+      const res = await fetch(`/api/projects/${projectId}/documents/${docId}/revise`, { method: 'POST' })
+      if (res.ok) { const d = await res.json(); router.push(`/dashboard/projects/${projectId}/documents/${d.id}`) }
+    } finally { setRevising(false) }
+  }
+
+  // ── Export ──────────────────────────────────────────────────────────────────
+  async function exportDoc() {
+    setExporting(true)
+    try {
+      const res = await fetch(`/api/projects/${projectId}/documents/${docId}/export?format=docx`)
+      if (!res.ok) throw new Error('Export failed')
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = res.headers.get('Content-Disposition')?.match(/filename="(.+)"/)?.[1] || 'document.docx'
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (e: any) { alert('Export failed: ' + e.message) }
+    finally { setExporting(false) }
+  }
+
+  // ── Insert ToC ──────────────────────────────────────────────────────────────
   function insertToc() {
     if (!editor || tocItems.length === 0) return
     const lines = tocItems.map(item => {
       const cls = item.level === 1 ? '' : item.level === 2 ? ' class="toc-h2"' : ' class="toc-h3"'
       return `<li${cls}>${item.itemIndex ? item.itemIndex + '. ' : ''}${item.textContent}</li>`
     }).join('')
-    const html = `<div class="toc-block"><h4>Table of Contents</h4><ol>${lines}</ol></div>`
-    editor.chain().focus().insertContent(html).run()
+    editor.chain().focus().insertContent(`<div class="toc-block"><h4>Table of Contents</h4><ol>${lines}</ol></div>`).run()
   }
 
+  // ── Editors ─────────────────────────────────────────────────────────────────
   const editor = useEditor({
     extensions: makeExtensions('Start writing…', setTocItems),
     content: '',
@@ -554,6 +675,7 @@ export default function DocumentEditorPage() {
     if (ex && typeof ex === 'object' && Object.keys(ex).length > 0) refEditor.commands.setContent(ex)
   }, [refEditor, doc])
 
+  // ── Keyboard shortcuts ──────────────────────────────────────────────────────
   useEffect(() => {
     function handler(e: KeyboardEvent) {
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
@@ -574,27 +696,36 @@ export default function DocumentEditorPage() {
   const isClient = userRole === 'client'
   const isApproved = docStatus === 'approved'
   const isReview = docStatus === 'review'
+  const isAdmin = userRole === 'admin'
+  const isConsultant = userRole === 'consultant'
   const backHref = isClient ? `/dashboard/client/projects/${projectId}` : `/dashboard/projects/${projectId}`
+  const unresolvedComments = comments.filter(c => !c.resolved).length
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 60px)', background: '#f5f2ee' }}>
       <style>{buildEditorStyles(sizes)}</style>
 
-      {/* Top bar */}
+      {/* ── Top bar ── */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 16px', height: 48, flexShrink: 0, borderBottom: '1px solid #e0ddd8', background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+        {/* Breadcrumb */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#8a96a2', minWidth: 0 }}>
           <Link href={isClient ? '/dashboard/client' : '/dashboard/projects'} style={{ color: '#8a96a2', textDecoration: 'none' }}>{isClient ? 'My Projects' : 'Projects'}</Link>
           <span>›</span>
           <Link href={backHref} style={{ color: '#8a96a2', textDecoration: 'none', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>{doc.project_name}</Link>
           <span>›</span>
-          <span style={{ color: '#1a1f24', fontWeight: 500, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>{doc.name}</span>
+          <span style={{ color: '#1a1f24', fontWeight: 500, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>{doc.name}{doc.revision && doc.revision > 1 ? ` (rev.${doc.revision})` : ''}</span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+
+        {/* Controls */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
           <span style={{ fontSize: 11, color: saveState === 'saved' ? '#3a7a5a' : saveState === 'saving' ? '#8a6020' : saveState === 'error' ? '#943030' : '#8a96a2' }}>
-            {saveState === 'saved' ? '✓ Saved' : saveState === 'saving' ? 'Saving…' : saveState === 'error' ? '⚠ Save failed' : '● Unsaved'}
+            {saveState === 'saved' ? '✓ Saved' : saveState === 'saving' ? 'Saving…' : saveState === 'error' ? '⚠ Error' : '● Unsaved'}
           </span>
+
           <span style={{ fontSize: 11, padding: '3px 10px', borderRadius: 20, background: st.bg, color: st.color, border: `0.5px solid ${st.border}`, fontWeight: 500 }}>{st.label}</span>
-          {!isClient && (
+
+          {/* Admin/consultant status dropdown */}
+          {(isAdmin || isConsultant) && (
             <select value={docStatus} onChange={e => updateStatus(e.target.value)} style={{ height: 28, padding: '0 8px', fontSize: 12, border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 6, background: '#fff', color: '#2e3640', cursor: 'pointer' }}>
               <option value="draft">Draft</option>
               <option value="inprogress">In progress</option>
@@ -602,37 +733,54 @@ export default function DocumentEditorPage() {
               <option value="approved">Approved</option>
             </select>
           )}
+
+          {/* Client: submit */}
           {isClient && !isApproved && !isReview && (
-            <button onClick={submitForReview} disabled={submitting} style={{ height: 28, padding: '0 14px', fontSize: 12, cursor: 'pointer', background: '#4e8c8c', border: 'none', borderRadius: 6, color: '#fff', opacity: submitting ? 0.7 : 1, fontWeight: 500 }}>
+            <button onClick={submitForReview} disabled={submitting} style={{ height: 28, padding: '0 12px', fontSize: 12, cursor: 'pointer', background: '#4e8c8c', border: 'none', borderRadius: 6, color: '#fff', opacity: submitting ? 0.7 : 1, fontWeight: 500 }}>
               {submitting ? 'Submitting…' : 'Submit for review'}
             </button>
           )}
           {isClient && isReview && <span style={{ fontSize: 12, color: '#8a6020', fontWeight: 500 }}>⏳ Awaiting review</span>}
           {isClient && isApproved && <span style={{ fontSize: 12, color: '#3a7a5a', fontWeight: 500 }}>✓ Approved</span>}
+
+          {/* Consultant/admin: approve or request changes */}
+          {(isAdmin || isConsultant) && isReview && (
+            <>
+              <button onClick={approveDoc} disabled={approving} style={{ height: 28, padding: '0 12px', fontSize: 12, cursor: 'pointer', background: '#3a7a5a', border: 'none', borderRadius: 6, color: '#fff', fontWeight: 500, opacity: approving ? 0.7 : 1 }}>
+                {approving ? 'Approving…' : '✓ Approve'}
+              </button>
+              <button onClick={() => setShowRequestChanges(v => !v)} style={{ height: 28, padding: '0 12px', fontSize: 12, cursor: 'pointer', background: showRequestChanges ? 'rgba(148,48,48,0.1)' : 'transparent', border: '0.5px solid rgba(148,48,48,0.35)', borderRadius: 6, color: '#943030', fontWeight: 500 }}>
+                Request changes
+              </button>
+            </>
+          )}
+
+          {/* Admin: new revision from approved */}
+          {isAdmin && isApproved && (
+            <button onClick={reviseDoc} disabled={revising} style={{ height: 28, padding: '0 12px', fontSize: 12, cursor: 'pointer', background: 'transparent', border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 6, color: '#5a6472', opacity: revising ? 0.7 : 1 }}>
+              {revising ? 'Creating…' : '↻ New revision'}
+            </button>
+          )}
+
+          {/* Comments toggle */}
+          <button onClick={() => setShowComments(v => !v)} style={{ height: 28, padding: '0 10px', fontSize: 12, cursor: 'pointer', background: showComments ? 'rgba(200,169,110,0.12)' : 'transparent', border: showComments ? '0.5px solid rgba(200,169,110,0.4)' : '0.5px solid rgba(0,0,0,0.15)', borderRadius: 6, color: showComments ? '#8a6020' : '#5a6472', display: 'flex', alignItems: 'center', gap: 5 }}>
+            <I.Comment />
+            {unresolvedComments > 0 ? `${unresolvedComments}` : 'Comments'}
+          </button>
+
+          {/* Example toggle */}
           <button onClick={() => setShowReference(v => !v)} style={{ height: 28, padding: '0 12px', fontSize: 12, cursor: 'pointer', background: showReference ? 'rgba(78,140,140,0.1)' : 'transparent', border: showReference ? '0.5px solid rgba(78,140,140,0.4)' : '0.5px solid rgba(0,0,0,0.15)', borderRadius: 6, color: showReference ? '#2e5f5f' : '#5a6472', fontWeight: 500 }}>
             {showReference ? 'Hide example' : 'Show example'}
           </button>
 
-          {/* Export button */}
-          <button
-            onClick={() => exportDoc('docx')}
-            disabled={exporting}
-            style={{
-              height: 28, padding: '0 12px', fontSize: 12, cursor: exporting ? 'default' : 'pointer',
-              background: 'transparent',
-              border: '0.5px solid rgba(0,0,0,0.15)',
-              borderRadius: 6, color: '#5a6472',
-              opacity: exporting ? 0.6 : 1,
-              display: 'flex', alignItems: 'center', gap: 5,
-            }}
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            {exporting ? 'Exporting…' : 'Export DOCX'}
+          {/* Export */}
+          <button onClick={exportDoc} disabled={exporting} style={{ height: 28, padding: '0 10px', fontSize: 12, cursor: exporting ? 'default' : 'pointer', background: 'transparent', border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 6, color: '#5a6472', display: 'flex', alignItems: 'center', gap: 5, opacity: exporting ? 0.6 : 1 }}>
+            <I.Download />{exporting ? 'Exporting…' : 'DOCX'}
           </button>
         </div>
       </div>
 
-      {/* Meta strip */}
+      {/* ── Meta strip ── */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '5px 16px', flexShrink: 0, borderBottom: '1px solid #e0ddd8', background: '#fff', fontSize: 11, color: '#8a96a2' }}>
         <span style={{ fontWeight: 500, color: '#5a6472' }}>{doc.annex}</span>
         <span>·</span><span style={{ fontFamily: 'monospace' }}>{doc.code}</span>
@@ -641,28 +789,39 @@ export default function DocumentEditorPage() {
         <span style={{ marginLeft: 'auto' }}>{wordCount} words</span>
       </div>
 
+      {/* ── Approved banner ── */}
       {isClient && isApproved && (
         <div style={{ padding: '8px 16px', flexShrink: 0, background: 'rgba(58,122,90,0.08)', borderBottom: '1px solid rgba(58,122,90,0.2)', fontSize: 12, color: '#3a7a5a' }}>
-          ✓ This record has been approved and is now read-only.
+          ✓ This record has been approved and is read-only.
         </div>
       )}
 
-      {/* Split pane */}
-      <div style={{ flex: 1, overflow: 'hidden', display: 'grid', gridTemplateColumns: showReference ? '1fr 1fr' : '1fr' }}>
+      {/* ── Request changes panel ── */}
+      {showRequestChanges && (
+        <div style={{ padding: '12px 16px', flexShrink: 0, background: 'rgba(148,48,48,0.05)', borderBottom: '1px solid rgba(148,48,48,0.15)', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 12, fontWeight: 500, color: '#943030', marginBottom: 6 }}>Reason for requesting changes</div>
+            <textarea value={changeReason} onChange={e => setChangeReason(e.target.value)} placeholder="Explain what needs to be changed…" autoFocus
+              style={{ width: '100%', height: 70, padding: '8px 10px', fontSize: 12, border: '0.5px solid rgba(148,48,48,0.3)', borderRadius: 6, outline: 'none', resize: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }} />
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingTop: 22 }}>
+            <button onClick={requestChanges} disabled={!changeReason.trim()} style={{ height: 28, padding: '0 12px', fontSize: 12, background: '#943030', border: 'none', borderRadius: 6, color: '#fff', cursor: changeReason.trim() ? 'pointer' : 'default', opacity: changeReason.trim() ? 1 : 0.5 }}>Send</button>
+            <button onClick={() => { setShowRequestChanges(false); setChangeReason('') }} style={{ height: 28, padding: '0 12px', fontSize: 12, background: 'transparent', border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 6, color: '#5a6472', cursor: 'pointer' }}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Split pane ── */}
+      <div style={{ flex: 1, overflow: 'hidden', display: 'flex' }}>
 
         {/* Left — editable */}
-        <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRight: showReference ? '1px solid #d8d4ce' : 'none' }}>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRight: showReference ? '1px solid #d8d4ce' : 'none' }}>
           {!(isClient && isApproved) && (
-            <Toolbar
-              editor={editor} sizes={sizes} onSizeChange={handleSizeChange}
-              showOutline={showOutline} onToggleOutline={() => setShowOutline(v => !v)}
-              onInsertToc={insertToc}
-            />
+            <Toolbar editor={editor} sizes={sizes} onSizeChange={(k, v) => setSizes(p => ({ ...p, [k]: v }))}
+              showOutline={showOutline} onToggleOutline={() => setShowOutline(v => !v)} onInsertToc={insertToc} />
           )}
           <div style={{ flex: 1, overflow: 'hidden', display: 'flex' }}>
-            {/* Outline panel */}
             {showOutline && <OutlinePanel items={tocItems} onClose={() => setShowOutline(false)} />}
-            {/* Page scroll area */}
             <div style={{ flex: 1, overflowY: 'auto', padding: '32px 24px', background: '#f5f2ee' }}>
               <div style={{ maxWidth: 780, margin: '0 auto', background: '#fff', boxShadow: '0 1px 4px rgba(0,0,0,0.08), 0 4px 16px rgba(0,0,0,0.04)', borderRadius: 2, padding: '60px 72px', minHeight: 900 }}>
                 <EditorContent editor={isClient && isApproved ? refEditor : editor} />
@@ -674,7 +833,7 @@ export default function DocumentEditorPage() {
 
         {/* Right — example */}
         {showReference && (
-          <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#ede9e3' }}>
+          <div style={{ width: '40%', flexShrink: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#ede9e3', borderRight: showComments ? '1px solid #d8d4ce' : 'none' }}>
             <div style={{ padding: '8px 16px', flexShrink: 0, borderBottom: '1px solid #d8d4ce', background: '#e8e3dc', fontSize: 11, fontWeight: 600, color: '#5a6472', display: 'flex', alignItems: 'center', gap: 6, textTransform: 'uppercase' as const, letterSpacing: '0.06em' }}>
               <span>Example</span>
               {doc.template_name && <span style={{ fontWeight: 400, color: '#8a96a2', textTransform: 'none' as const, letterSpacing: 0 }}>— {doc.template_name}</span>}
@@ -688,12 +847,23 @@ export default function DocumentEditorPage() {
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60%', gap: 12, textAlign: 'center' }}>
                   <div style={{ fontSize: 32, opacity: 0.2 }}>📄</div>
                   <div style={{ fontSize: 13, fontWeight: 500, color: '#5a6472' }}>No example available</div>
-                  <div style={{ fontSize: 12, color: '#8a96a2', maxWidth: 240, lineHeight: 1.7 }}>Ask your project consultant to provide an example for this template.</div>
+                  <div style={{ fontSize: 12, color: '#8a96a2', maxWidth: 240, lineHeight: 1.7 }}>Ask your consultant to provide an example.</div>
                 </div>
               )}
               <div style={{ height: 48 }} />
             </div>
           </div>
+        )}
+
+        {/* Comments panel */}
+        {showComments && (
+          <CommentsPanel
+            comments={comments} commentsLoading={commentsLoading}
+            newComment={newComment} setNewComment={setNewComment}
+            replyTo={replyTo} setReplyTo={setReplyTo}
+            postingComment={postingComment} postComment={postComment}
+            resolveComment={resolveComment} onClose={() => setShowComments(false)}
+          />
         )}
       </div>
     </div>
