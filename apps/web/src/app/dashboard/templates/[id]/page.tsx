@@ -16,38 +16,32 @@ import Placeholder from '@tiptap/extension-placeholder'
 import CharacterCount from '@tiptap/extension-character-count'
 import FontFamily from '@tiptap/extension-font-family'
 import TextStyle from '@tiptap/extension-text-style'
+import { TableOfContents, getHierarchicalIndexes } from '@tiptap/extension-table-of-contents'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface TemplateVersion {
-  id: string
-  version: string
-  is_current: boolean
-  change_note: string | null
-  created_at: string
-  created_by_name: string | null
+  id: string; version: string; is_current: boolean
+  change_note: string | null; created_at: string; created_by_name: string | null
 }
 
 interface TemplateData {
-  id: string
-  name: string
-  tag_code: string
-  status: string
-  created_by_name: string | null
-  versions: TemplateVersion[]
-  content?: any
-  example_content?: any
-  version_id?: string
-  version?: string
+  id: string; name: string; tag_code: string; status: string
+  created_by_name: string | null; versions: TemplateVersion[]
+  content?: any; example_content?: any; version_id?: string; version?: string
+}
+
+interface TocItem {
+  id: string; textContent: string; level: number; itemIndex: string
 }
 
 type Tab = 'template' | 'example'
 type SaveState = 'saved' | 'saving' | 'unsaved' | 'error'
 
 const STATUS_STYLES: Record<string, { bg: string; color: string; border: string }> = {
-  active:   { bg: 'rgba(58,122,90,0.1)',   color: '#3a7a5a', border: 'rgba(58,122,90,0.3)' },
-  draft:    { bg: '#f5f2ee',               color: '#5a6472', border: 'rgba(90,100,114,0.3)' },
-  archived: { bg: 'rgba(148,48,48,0.08)',  color: '#943030', border: 'rgba(148,48,48,0.25)' },
+  active:   { bg: 'rgba(58,122,90,0.1)',  color: '#3a7a5a', border: 'rgba(58,122,90,0.3)' },
+  draft:    { bg: '#f5f2ee',              color: '#5a6472', border: 'rgba(90,100,114,0.3)' },
+  archived: { bg: 'rgba(148,48,48,0.08)', color: '#943030', border: 'rgba(148,48,48,0.25)' },
 }
 
 const DEFAULT_SIZES = { p: 14, h1: 26, h2: 20, h3: 15, h4: 14 }
@@ -62,7 +56,7 @@ const FONTS = [
   { label: 'Courier New',        value: "'Courier New', monospace" },
 ]
 
-// ── Icons ─────────────────────────────────────────────────────────────────────
+// ── Icons (same as document editor) ──────────────────────────────────────────
 
 const I = {
   Bold:        () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M6 4h8a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"/><path d="M6 12h9a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"/></svg>,
@@ -82,9 +76,8 @@ const I = {
   Undo:        () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>,
   Redo:        () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3L21 13"/></svg>,
   ChevDown:    () => <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="6 9 12 15 18 9"/></svg>,
+  ToC:         () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="3" y1="5" x2="21" y2="5"/><line x1="6" y1="9" x2="21" y2="9"/><line x1="6" y1="13" x2="21" y2="13"/><line x1="9" y1="17" x2="21" y2="17"/><line x1="3" y1="5" x2="3" y2="17"/></svg>,
 }
-
-// ── Shared button ─────────────────────────────────────────────────────────────
 
 function Btn({ active, disabled, onClick, title, children, danger }: {
   active?: boolean; disabled?: boolean; onClick: () => void
@@ -94,14 +87,7 @@ function Btn({ active, disabled, onClick, title, children, danger }: {
     <button
       onMouseDown={e => { e.preventDefault(); if (!disabled) onClick() }}
       disabled={disabled} title={title}
-      style={{
-        height: 30, minWidth: 30, padding: '0 6px',
-        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3,
-        border: 'none', borderRadius: 5,
-        background: active ? 'rgba(78,140,140,0.15)' : 'transparent',
-        color: active ? '#2e5f5f' : disabled ? '#ccc' : danger ? '#943030' : '#2e3640',
-        cursor: disabled ? 'default' : 'pointer', fontSize: 12,
-      }}
+      style={{ height: 30, minWidth: 30, padding: '0 6px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3, border: 'none', borderRadius: 5, background: active ? 'rgba(78,140,140,0.15)' : 'transparent', color: active ? '#2e5f5f' : disabled ? '#ccc' : danger ? '#943030' : '#2e3640', cursor: disabled ? 'default' : 'pointer', fontSize: 12 }}
       onMouseEnter={e => { if (!disabled && !active) e.currentTarget.style.background = 'rgba(0,0,0,0.05)' }}
       onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent' }}
     >{children}</button>
@@ -112,24 +98,18 @@ function Sep() {
   return <div style={{ width: 1, height: 20, background: 'rgba(0,0,0,0.12)', margin: '0 3px', flexShrink: 0 }} />
 }
 
-// ── Table submenu ─────────────────────────────────────────────────────────────
-
-function TableMenu({ editor, onClose }: { editor: any; onClose: () => void }) {
+function TableMenu({ editor, onClose, pos }: { editor: any; onClose: () => void; pos: { top: number; left: number } }) {
   const inTable = editor.can().addColumnAfter()
-  const Section = ({ title }: { title: string }) => (
-    <div style={{ fontSize: 10, fontWeight: 600, color: '#8a96a2', textTransform: 'uppercase', letterSpacing: '0.08em', padding: '8px 12px 4px' }}>{title}</div>
-  )
+  const Section = ({ title }: { title: string }) => <div style={{ fontSize: 10, fontWeight: 600, color: '#8a96a2', textTransform: 'uppercase', letterSpacing: '0.08em', padding: '8px 12px 4px' }}>{title}</div>
   const Item = ({ label, onClick, danger, disabled }: { label: string; onClick: () => void; danger?: boolean; disabled?: boolean }) => (
-    <button
-      onMouseDown={e => { e.preventDefault(); if (!disabled) { onClick(); onClose() } }}
-      disabled={disabled}
+    <button onMouseDown={e => { e.preventDefault(); if (!disabled) { onClick(); onClose() } }} disabled={disabled}
       style={{ display: 'block', width: '100%', textAlign: 'left', padding: '6px 12px', fontSize: 12, border: 'none', background: 'transparent', cursor: disabled ? 'default' : 'pointer', color: disabled ? '#ccc' : danger ? '#943030' : '#1a1f24', borderRadius: 4 }}
       onMouseEnter={e => { if (!disabled) e.currentTarget.style.background = 'rgba(0,0,0,0.04)' }}
       onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
     >{label}</button>
   )
   return (
-    <div style={{ position: 'fixed', zIndex: 9999, background: '#fff', border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 10, boxShadow: '0 4px 24px rgba(0,0,0,0.14)', minWidth: 200, padding: '6px 0' }}>
+    <div style={{ position: 'fixed', top: pos.top, left: pos.left, zIndex: 9999, background: '#fff', border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 10, boxShadow: '0 4px 24px rgba(0,0,0,0.14)', minWidth: 200, padding: '6px 0' }}>
       <Section title="Insert" />
       <Item label="Insert table (3×3)" onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()} />
       <Item label="Insert table (5×3)" onClick={() => editor.chain().focus().insertTable({ rows: 5, cols: 3, withHeaderRow: true }).run()} />
@@ -151,12 +131,8 @@ function TableMenu({ editor, onClose }: { editor: any; onClose: () => void }) {
   )
 }
 
-// ── Font size panel ───────────────────────────────────────────────────────────
-
-function FontPanel({ sizes, onChange, onClose }: {
-  sizes: typeof DEFAULT_SIZES
-  onChange: (key: keyof typeof DEFAULT_SIZES, val: number) => void
-  onClose: () => void
+function FontPanel({ sizes, onChange, onClose, pos }: {
+  sizes: typeof DEFAULT_SIZES; onChange: (key: keyof typeof DEFAULT_SIZES, val: number) => void; onClose: () => void; pos: { top: number; left: number }
 }) {
   const rows: { key: keyof typeof DEFAULT_SIZES; label: string; style: React.CSSProperties }[] = [
     { key: 'p',  label: 'Normal text', style: { fontSize: sizes.p } },
@@ -166,7 +142,7 @@ function FontPanel({ sizes, onChange, onClose }: {
     { key: 'h4', label: 'Heading 4',   style: { fontSize: sizes.h4, fontWeight: 600, color: '#5a6472' } },
   ]
   return (
-    <div style={{ position: 'fixed', zIndex: 9999, background: '#fff', border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 10, boxShadow: '0 4px 24px rgba(0,0,0,0.12)', padding: 16, width: 310 }}>
+    <div style={{ position: 'fixed', top: pos.top, left: pos.left, zIndex: 9999, background: '#fff', border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 10, boxShadow: '0 4px 24px rgba(0,0,0,0.12)', padding: 16, width: 310 }}>
       <div style={{ fontSize: 11, fontWeight: 600, color: '#5a6472', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 12 }}>Font sizes</div>
       {rows.map(r => (
         <div key={r.key} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
@@ -186,49 +162,77 @@ function FontPanel({ sizes, onChange, onClose }: {
   )
 }
 
-// ── Toolbar ───────────────────────────────────────────────────────────────────
+function OutlinePanel({ items, onClose }: { items: TocItem[]; onClose: () => void }) {
+  return (
+    <div style={{ width: 220, flexShrink: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#faf9f7', borderRight: '1px solid #e0ddd8' }}>
+      <div style={{ padding: '10px 14px', borderBottom: '1px solid #e0ddd8', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#f5f2ee' }}>
+        <span style={{ fontSize: 11, fontWeight: 600, color: '#5a6472', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Outline</span>
+        <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#8a96a2', fontSize: 16, lineHeight: 1 }}>×</button>
+      </div>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
+        {items.length === 0 ? (
+          <div style={{ padding: '20px 14px', fontSize: 12, color: '#8a96a2', lineHeight: 1.5 }}>No headings yet.</div>
+        ) : items.map(item => (
+          <button key={item.id}
+            onClick={() => { const el = document.getElementById(item.id); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }) }}
+            style={{ display: 'block', width: '100%', textAlign: 'left', padding: `5px 14px 5px ${8 + (item.level - 1) * 12}px`, fontSize: item.level === 1 ? 12 : 11, fontWeight: item.level === 1 ? 600 : item.level === 2 ? 500 : 400, color: item.level === 1 ? '#1a1f24' : item.level === 2 ? '#2e3640' : '#5a6472', border: 'none', background: 'transparent', cursor: 'pointer', lineHeight: 1.4 }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(78,140,140,0.08)' }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+          >
+            {item.level > 1 && <span style={{ color: '#d8d4ce', marginRight: 4 }}>{'—'.repeat(item.level - 1)}</span>}
+            {item.textContent}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
 
-function Toolbar({ editor, sizes, onSizeChange }: {
-  editor: any
-  sizes: typeof DEFAULT_SIZES
-  onSizeChange: (key: keyof typeof DEFAULT_SIZES, val: number) => void
+function Toolbar({ editor, sizes, onSizeChange, showOutline, onToggleOutline, onInsertToc }: {
+  editor: any; sizes: typeof DEFAULT_SIZES; onSizeChange: (key: keyof typeof DEFAULT_SIZES, val: number) => void
+  showOutline: boolean; onToggleOutline: () => void; onInsertToc: () => void
 }) {
   const [showTable, setShowTable] = useState(false)
   const [showFont, setShowFont] = useState(false)
+  const [showToc, setShowToc] = useState(false)
   const tableBtnRef = useRef<HTMLDivElement>(null)
   const fontBtnRef = useRef<HTMLDivElement>(null)
+  const tocBtnRef = useRef<HTMLDivElement>(null)
   const [tablePos, setTablePos] = useState({ top: 0, left: 0 })
   const [fontPos, setFontPos] = useState({ top: 0, left: 0 })
+  const [tocPos, setTocPos] = useState({ top: 0, left: 0 })
 
   if (!editor) return null
 
-  const headingValue = editor.isActive('heading', { level: 1 }) ? '1'
-    : editor.isActive('heading', { level: 2 }) ? '2'
-    : editor.isActive('heading', { level: 3 }) ? '3'
-    : editor.isActive('heading', { level: 4 }) ? '4' : '0'
-
+  const headingValue = editor.isActive('heading', { level: 1 }) ? '1' : editor.isActive('heading', { level: 2 }) ? '2' : editor.isActive('heading', { level: 3 }) ? '3' : editor.isActive('heading', { level: 4 }) ? '4' : '0'
   const currentFont = FONTS.find(f => editor.isActive('textStyle', { fontFamily: f.value }))?.value || FONTS[0].value
 
-  function openTable() {
-    if (tableBtnRef.current) {
-      const r = tableBtnRef.current.getBoundingClientRect()
-      setTablePos({ top: r.bottom + 4, left: r.left })
-    }
-    setShowTable(v => !v)
-    setShowFont(false)
+  function getPos(ref: React.RefObject<HTMLDivElement>) {
+    if (!ref.current) return { top: 0, left: 0 }
+    const r = ref.current.getBoundingClientRect()
+    return { top: r.bottom + 4, left: r.left }
   }
 
-  function openFont() {
-    if (fontBtnRef.current) {
-      const r = fontBtnRef.current.getBoundingClientRect()
-      setFontPos({ top: r.bottom + 4, left: r.left })
-    }
-    setShowFont(v => !v)
-    setShowTable(false)
-  }
+  const Overlay = ({ onClose }: { onClose: () => void }) => <div style={{ position: 'fixed', inset: 0, zIndex: 9998 }} onClick={onClose} />
 
-  const Overlay = ({ onClose }: { onClose: () => void }) => (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 9998 }} onClick={onClose} />
+  const TocMenu = ({ pos, onClose }: { pos: { top: number; left: number }; onClose: () => void }) => (
+    <div style={{ position: 'fixed', top: pos.top, left: pos.left, zIndex: 9999, background: '#fff', border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 10, boxShadow: '0 4px 24px rgba(0,0,0,0.14)', minWidth: 220, padding: '6px 0' }}>
+      <button onMouseDown={e => { e.preventDefault(); onToggleOutline(); onClose() }}
+        style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 14px', fontSize: 12, border: 'none', background: 'transparent', cursor: 'pointer', color: '#1a1f24' }}
+        onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.04)' }}
+        onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}>
+        <div style={{ fontWeight: 500 }}>{showOutline ? 'Hide outline' : 'Show outline'}</div>
+        <div style={{ fontSize: 11, color: '#8a96a2', marginTop: 1 }}>Navigation panel with headings</div>
+      </button>
+      <div style={{ height: 1, background: 'rgba(0,0,0,0.08)', margin: '4px 0' }} />
+      <button onMouseDown={e => { e.preventDefault(); onInsertToc(); onClose() }}
+        style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 14px', fontSize: 12, border: 'none', background: 'transparent', cursor: 'pointer', color: '#1a1f24' }}
+        onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.04)' }}
+        onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}>
+        <div style={{ fontWeight: 500 }}>Insert Table of Contents</div>
+        <div style={{ fontSize: 11, color: '#8a96a2', marginTop: 1 }}>Add ToC block to document</div>
+      </button>
+    </div>
   )
 
   return (
@@ -236,36 +240,20 @@ function Toolbar({ editor, sizes, onSizeChange }: {
       <Btn title="Undo" disabled={!editor.can().undo()} onClick={() => editor.chain().focus().undo().run()}><I.Undo /></Btn>
       <Btn title="Redo" disabled={!editor.can().redo()} onClick={() => editor.chain().focus().redo().run()}><I.Redo /></Btn>
       <Sep />
-
       <select value={headingValue} onChange={e => { const v = e.target.value; if (v === '0') editor.chain().focus().setParagraph().run(); else editor.chain().focus().toggleHeading({ level: parseInt(v) as 1|2|3|4 }).run() }}
         style={{ height: 28, padding: '0 6px', fontSize: 12, border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 5, background: '#fff', cursor: 'pointer', color: '#2e3640' }}>
-        <option value="0">Normal text</option>
-        <option value="1">Heading 1</option>
-        <option value="2">Heading 2</option>
-        <option value="3">Heading 3</option>
-        <option value="4">Heading 4</option>
+        <option value="0">Normal text</option><option value="1">Heading 1</option><option value="2">Heading 2</option><option value="3">Heading 3</option><option value="4">Heading 4</option>
       </select>
-
       <select value={currentFont} onChange={e => editor.chain().focus().setFontFamily(e.target.value).run()}
         style={{ height: 28, padding: '0 6px', fontSize: 12, border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 5, background: '#fff', cursor: 'pointer', color: '#2e3640', maxWidth: 160, marginLeft: 4 }}>
         {FONTS.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
       </select>
-
       <div ref={fontBtnRef}>
-        <Btn title="Font sizes" active={showFont} onClick={openFont}>
-          <span style={{ fontSize: 12, fontWeight: 600 }}>Aa</span>
-          <I.ChevDown />
+        <Btn title="Font sizes" active={showFont} onClick={() => { setFontPos(getPos(fontBtnRef)); setShowFont(v => !v); setShowTable(false); setShowToc(false) }}>
+          <span style={{ fontSize: 12, fontWeight: 600 }}>Aa</span><I.ChevDown />
         </Btn>
       </div>
-      {showFont && (
-        <>
-          <Overlay onClose={() => setShowFont(false)} />
-          <div style={{ position: 'fixed', top: fontPos.top, left: fontPos.left, zIndex: 9999 }}>
-            <FontPanel sizes={sizes} onChange={onSizeChange} onClose={() => setShowFont(false)} />
-          </div>
-        </>
-      )}
-
+      {showFont && (<><Overlay onClose={() => setShowFont(false)} /><FontPanel sizes={sizes} onChange={onSizeChange} onClose={() => setShowFont(false)} pos={fontPos} /></>)}
       <Sep />
       <Btn title="Bold" active={editor.isActive('bold')} onClick={() => editor.chain().focus().toggleBold().run()}><I.Bold /></Btn>
       <Btn title="Italic" active={editor.isActive('italic')} onClick={() => editor.chain().focus().toggleItalic().run()}><I.Italic /></Btn>
@@ -282,29 +270,22 @@ function Toolbar({ editor, sizes, onSizeChange }: {
       <Btn title="Align right" active={editor.isActive({ textAlign: 'right' })} onClick={() => editor.chain().focus().setTextAlign('right').run()}><I.AlignRight /></Btn>
       <Btn title="Justify" active={editor.isActive({ textAlign: 'justify' })} onClick={() => editor.chain().focus().setTextAlign('justify').run()}><I.AlignJust /></Btn>
       <Sep />
-
       <div ref={tableBtnRef}>
-        <Btn title="Table" active={showTable} onClick={openTable}>
-          <I.Table />
-          <I.ChevDown />
+        <Btn title="Table" active={showTable} onClick={() => { setTablePos(getPos(tableBtnRef)); setShowTable(v => !v); setShowFont(false); setShowToc(false) }}>
+          <I.Table /><I.ChevDown />
         </Btn>
       </div>
-      {showTable && (
-        <>
-          <Overlay onClose={() => setShowTable(false)} />
-          <div style={{ position: 'fixed', top: tablePos.top, left: tablePos.left, zIndex: 9999 }}>
-            <TableMenu editor={editor} onClose={() => setShowTable(false)} />
-          </div>
-        </>
-      )}
-
+      {showTable && (<><Overlay onClose={() => setShowTable(false)} /><TableMenu editor={editor} onClose={() => setShowTable(false)} pos={tablePos} /></>)}
       <Sep />
-      <Btn title="Horizontal rule" onClick={() => editor.chain().focus().setHorizontalRule().run()}><I.HRule /></Btn>
+      <div ref={tocBtnRef}>
+        <Btn title="Table of Contents" active={showToc || showOutline} onClick={() => { setTocPos(getPos(tocBtnRef)); setShowToc(v => !v); setShowTable(false); setShowFont(false) }}>
+          <I.ToC /><I.ChevDown />
+        </Btn>
+      </div>
+      {showToc && (<><Overlay onClose={() => setShowToc(false)} /><TocMenu pos={tocPos} onClose={() => setShowToc(false)} /></>)}
     </div>
   )
 }
-
-// ── Editor styles ─────────────────────────────────────────────────────────────
 
 function buildEditorStyles(sizes: typeof DEFAULT_SIZES) {
   return `
@@ -328,14 +309,18 @@ function buildEditorStyles(sizes: typeof DEFAULT_SIZES) {
     .ProseMirror mark { background: #fff3b0; border-radius: 2px; padding: 1px 2px; }
     .ProseMirror .selectedCell { background: rgba(78,140,140,0.1) !important; }
     .ProseMirror p.is-editor-empty:first-child::before { content: attr(data-placeholder); float: left; color: #8a96a2; pointer-events: none; height: 0; font-style: italic; }
+    .toc-block { background: #f5f2ee; border: 1px solid #e0ddd8; border-radius: 6px; padding: 16px 20px; margin: 16px 0; }
+    .toc-block h4 { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: #8a96a2; margin: 0 0 10px; border: none; }
+    .toc-block ol { margin: 0; padding-left: 18px; }
+    .toc-block li { font-size: 13px; margin-bottom: 4px; color: #2e3640; }
+    .toc-block li.toc-h2 { padding-left: 12px; font-size: 12px; color: #5a6472; }
+    .toc-block li.toc-h3 { padding-left: 24px; font-size: 11px; color: #8a96a2; }
     .tableWrapper { overflow-x: auto; }
     .column-resize-handle { background-color: #4e8c8c; bottom: -2px; position: absolute; right: -2px; top: 0; width: 4px; pointer-events: none; }
   `
 }
 
-// ── Extensions ────────────────────────────────────────────────────────────────
-
-function makeExtensions(placeholder: string) {
+function makeExtensions(placeholder: string, onTocUpdate: (items: TocItem[]) => void) {
   return [
     StarterKit, TextStyle, FontFamily, Underline,
     Highlight.configure({ multicolor: false }),
@@ -344,10 +329,12 @@ function makeExtensions(placeholder: string) {
     TableRow, TableHeader, TableCell,
     Placeholder.configure({ placeholder }),
     CharacterCount,
+    TableOfContents.configure({
+      getIndex: getHierarchicalIndexes,
+      onUpdate: (content: any) => onTocUpdate(content),
+    }),
   ]
 }
-
-// ── Save modal ────────────────────────────────────────────────────────────────
 
 function SaveModal({ onClose, onSave, currentVersion }: {
   onClose: () => void
@@ -355,10 +342,7 @@ function SaveModal({ onClose, onSave, currentVersion }: {
   currentVersion: string
 }) {
   const [mode, setMode] = useState<'update' | 'new'>('update')
-  const [newVersion, setNewVersion] = useState(() => {
-    const m = currentVersion?.match(/^v(\d+)$/)
-    return m ? `v${parseInt(m[1]) + 1}` : `${currentVersion}-2`
-  })
+  const [newVersion, setNewVersion] = useState(() => { const m = currentVersion?.match(/^v(\d+)$/); return m ? `v${parseInt(m[1]) + 1}` : `${currentVersion}-2` })
   const [changeNote, setChangeNote] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -405,8 +389,6 @@ function SaveModal({ onClose, onSave, currentVersion }: {
   )
 }
 
-// ── Main page ─────────────────────────────────────────────────────────────────
-
 export default function TemplateEditorPage() {
   const params = useParams()
   const router = useRouter()
@@ -418,8 +400,10 @@ export default function TemplateEditorPage() {
   const [saveState, setSaveState] = useState<SaveState>('saved')
   const [showSaveModal, setShowSaveModal] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
+  const [showOutline, setShowOutline] = useState(false)
   const [sizes, setSizes] = useState(DEFAULT_SIZES)
   const [wordCount, setWordCount] = useState(0)
+  const [tocItems, setTocItems] = useState<TocItem[]>([])
 
   const latestTemplateContent = useRef<any>(null)
   const latestExampleContent = useRef<any>(null)
@@ -438,21 +422,18 @@ export default function TemplateEditorPage() {
         const vRes = await fetch(`/api/templates/${templateId}/versions/${currentVer.id}`)
         if (vRes.ok) {
           const vData = await vRes.json()
-          data.content = vData.content
-          data.example_content = vData.example_content
-          data.version_id = currentVer.id
-          data.version = currentVer.version
+          data.content = vData.content; data.example_content = vData.example_content
+          data.version_id = currentVer.id; data.version = currentVer.version
         }
       }
-      setTemplate(data)
-      setLoading(false)
+      setTemplate(data); setLoading(false)
     } catch { router.push('/dashboard/templates') }
   }
 
   useEffect(() => { load() }, [templateId])
 
   const templateEditor = useEditor({
-    extensions: makeExtensions('Write the template structure here — headings, checklists, tables…'),
+    extensions: makeExtensions('Write the template structure here — headings, checklists, tables…', setTocItems),
     content: '',
     editorProps: { attributes: { style: 'outline: none;' } },
     onUpdate: ({ editor }) => {
@@ -472,13 +453,10 @@ export default function TemplateEditorPage() {
   }, [templateEditor, template])
 
   const exampleEditor = useEditor({
-    extensions: makeExtensions('Write the ACME example here — show users how this template should be filled…'),
+    extensions: makeExtensions('Write the ACME example here…', () => {}),
     content: '',
     editorProps: { attributes: { style: 'outline: none;' } },
-    onUpdate: ({ editor }) => {
-      latestExampleContent.current = editor.getJSON()
-      setSaveState('unsaved')
-    },
+    onUpdate: ({ editor }) => { latestExampleContent.current = editor.getJSON(); setSaveState('unsaved') },
   })
 
   useEffect(() => {
@@ -494,30 +472,29 @@ export default function TemplateEditorPage() {
     setSaveState('saving')
     const content = latestTemplateContent.current ?? template.content ?? {}
     const example_content = latestExampleContent.current ?? template.example_content ?? {}
-
     if (mode === 'update' && template.version_id) {
-      const res = await fetch(`/api/templates/${templateId}/versions/${template.version_id}`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content, example_content, change_note: changeNote }),
-      })
+      const res = await fetch(`/api/templates/${templateId}/versions/${template.version_id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content, example_content, change_note: changeNote }) })
       if (!res.ok) { setSaveState('error'); throw new Error('Failed to update version') }
     } else {
-      const res = await fetch(`/api/templates/${templateId}/versions`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ version: newVersionLabel, content, example_content, change_note: changeNote, set_current: true }),
-      })
+      const res = await fetch(`/api/templates/${templateId}/versions`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ version: newVersionLabel, content, example_content, change_note: changeNote, set_current: true }) })
       if (!res.ok) { const err = await res.json(); setSaveState('error'); throw new Error(err.error || 'Failed') }
     }
-    setSaveState('saved')
-    await load()
+    setSaveState('saved'); await load()
+  }
+
+  function insertToc() {
+    const activeEditor = activeTab === 'template' ? templateEditor : exampleEditor
+    if (!activeEditor || tocItems.length === 0) return
+    const lines = tocItems.map(item => {
+      const cls = item.level === 1 ? '' : item.level === 2 ? ' class="toc-h2"' : ' class="toc-h3"'
+      return `<li${cls}>${item.itemIndex ? item.itemIndex + '. ' : ''}${item.textContent}</li>`
+    }).join('')
+    activeEditor.chain().focus().insertContent(`<div class="toc-block"><h4>Table of Contents</h4><ol>${lines}</ol></div>`).run()
   }
 
   useEffect(() => {
     function handler(e: KeyboardEvent) {
-      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-        e.preventDefault()
-        if (saveState === 'unsaved') setShowSaveModal(true)
-      }
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); if (saveState === 'unsaved') setShowSaveModal(true) }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
@@ -554,7 +531,7 @@ export default function TemplateEditorPage() {
         </div>
       </div>
 
-      {/* Tabs + meta strip */}
+      {/* Tabs + meta */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 16px', flexShrink: 0, borderBottom: '1px solid #e0ddd8', background: '#fff' }}>
         <div style={{ display: 'flex' }}>
           {(['template', 'example'] as Tab[]).map(tab => (
@@ -566,7 +543,7 @@ export default function TemplateEditorPage() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 11, color: '#8a96a2' }}>
           <span style={{ fontFamily: 'monospace' }}>${template.tag_code}</span>
           <span>·</span>
-          <span style={{ padding: '2px 7px', borderRadius: 20, fontSize: 11, background: st.bg, color: st.color, border: `0.5px solid ${st.border}` }}>{template.status}</span>
+          <span style={{ padding: '2px 7px', borderRadius: 20, background: st.bg, color: st.color, border: `0.5px solid ${st.border}` }}>{template.status}</span>
           {template.version && <><span>·</span><span style={{ fontFamily: 'monospace' }}>{template.version}</span></>}
         </div>
       </div>
@@ -575,17 +552,16 @@ export default function TemplateEditorPage() {
       <div style={{ flex: 1, overflow: 'hidden', display: 'flex' }}>
         {/* Editor column */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRight: showHistory ? '1px solid #d8d4ce' : 'none' }}>
-          <Toolbar editor={activeEditor} sizes={sizes} onSizeChange={handleSizeChange} />
-          <div style={{ flex: 1, overflowY: 'auto', padding: '32px 24px', background: '#f5f2ee' }}>
-            <div style={{ maxWidth: 780, margin: '0 auto', background: '#fff', boxShadow: '0 1px 4px rgba(0,0,0,0.08), 0 4px 16px rgba(0,0,0,0.04)', borderRadius: 2, padding: '60px 72px', minHeight: 900 }}>
-              <div style={{ display: activeTab === 'template' ? 'block' : 'none' }}>
-                <EditorContent editor={templateEditor} />
+          <Toolbar editor={activeEditor} sizes={sizes} onSizeChange={handleSizeChange} showOutline={showOutline} onToggleOutline={() => setShowOutline(v => !v)} onInsertToc={insertToc} />
+          <div style={{ flex: 1, overflow: 'hidden', display: 'flex' }}>
+            {showOutline && <OutlinePanel items={tocItems} onClose={() => setShowOutline(false)} />}
+            <div style={{ flex: 1, overflowY: 'auto', padding: '32px 24px', background: '#f5f2ee' }}>
+              <div style={{ maxWidth: 780, margin: '0 auto', background: '#fff', boxShadow: '0 1px 4px rgba(0,0,0,0.08), 0 4px 16px rgba(0,0,0,0.04)', borderRadius: 2, padding: '60px 72px', minHeight: 900 }}>
+                <div style={{ display: activeTab === 'template' ? 'block' : 'none' }}><EditorContent editor={templateEditor} /></div>
+                <div style={{ display: activeTab === 'example' ? 'block' : 'none' }}><EditorContent editor={exampleEditor} /></div>
               </div>
-              <div style={{ display: activeTab === 'example' ? 'block' : 'none' }}>
-                <EditorContent editor={exampleEditor} />
-              </div>
+              <div style={{ height: 48 }} />
             </div>
-            <div style={{ height: 48 }} />
           </div>
         </div>
 

@@ -16,6 +16,7 @@ import Placeholder from '@tiptap/extension-placeholder'
 import CharacterCount from '@tiptap/extension-character-count'
 import FontFamily from '@tiptap/extension-font-family'
 import TextStyle from '@tiptap/extension-text-style'
+import { TableOfContents, getHierarchicalIndexes } from '@tiptap/extension-table-of-contents'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -29,6 +30,13 @@ interface DocData {
 
 type SaveState = 'saved' | 'saving' | 'unsaved' | 'error'
 
+interface TocItem {
+  id: string
+  textContent: string
+  level: number
+  itemIndex: string
+}
+
 const DOC_STATUS: Record<string, { bg: string; color: string; border: string; label: string }> = {
   draft:      { bg: '#f5f2ee', color: '#5a6472', border: 'rgba(90,100,114,0.3)', label: 'Draft' },
   inprogress: { bg: 'rgba(200,169,110,0.12)', color: '#8a6020', border: 'rgba(200,169,110,0.4)', label: 'In progress' },
@@ -39,13 +47,13 @@ const DOC_STATUS: Record<string, { bg: string; color: string; border: string; la
 const DEFAULT_SIZES = { p: 14, h1: 26, h2: 20, h3: 15, h4: 14 }
 
 const FONTS = [
-  { label: 'DM Sans',             value: "'DM Sans', sans-serif" },
-  { label: 'Cormorant Garamond',  value: "'Cormorant Garamond', serif" },
-  { label: 'Georgia',             value: 'Georgia, serif' },
-  { label: 'Times New Roman',     value: "'Times New Roman', serif" },
-  { label: 'Arial',               value: 'Arial, sans-serif' },
-  { label: 'Helvetica',           value: 'Helvetica, Arial, sans-serif' },
-  { label: 'Courier New',         value: "'Courier New', monospace" },
+  { label: 'DM Sans',            value: "'DM Sans', sans-serif" },
+  { label: 'Cormorant Garamond', value: "'Cormorant Garamond', serif" },
+  { label: 'Georgia',            value: 'Georgia, serif' },
+  { label: 'Times New Roman',    value: "'Times New Roman', serif" },
+  { label: 'Arial',              value: 'Arial, sans-serif' },
+  { label: 'Helvetica',          value: 'Helvetica, Arial, sans-serif' },
+  { label: 'Courier New',        value: "'Courier New', monospace" },
 ]
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
@@ -67,21 +75,22 @@ const I = {
   HRule:       () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="3" y1="12" x2="21" y2="12"/></svg>,
   Undo:        () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>,
   Redo:        () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3L21 13"/></svg>,
-  ChevronDown: () => <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="6 9 12 15 18 9"/></svg>,
+  ChevDown:    () => <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="6 9 12 15 18 9"/></svg>,
+  ToC:         () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="3" y1="5" x2="21" y2="5"/><line x1="6" y1="9" x2="21" y2="9"/><line x1="6" y1="13" x2="21" y2="13"/><line x1="9" y1="17" x2="21" y2="17"/><line x1="3" y1="5" x2="3" y2="17"/></svg>,
 }
 
 // ── Shared button ─────────────────────────────────────────────────────────────
 
-function Btn({ active, disabled, onClick, title, children, danger, width }: {
+function Btn({ active, disabled, onClick, title, children, danger }: {
   active?: boolean; disabled?: boolean; onClick: () => void
-  title: string; children: React.ReactNode; danger?: boolean; width?: number
+  title: string; children: React.ReactNode; danger?: boolean
 }) {
   return (
     <button
       onMouseDown={e => { e.preventDefault(); if (!disabled) onClick() }}
       disabled={disabled} title={title}
       style={{
-        height: 30, minWidth: width || 30, padding: '0 6px',
+        height: 30, minWidth: 30, padding: '0 6px',
         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3,
         border: 'none', borderRadius: 5,
         background: active ? 'rgba(78,140,140,0.15)' : 'transparent',
@@ -100,57 +109,38 @@ function Sep() {
 
 // ── Table submenu ─────────────────────────────────────────────────────────────
 
-function TableMenu({ editor, onClose }: { editor: any; onClose: () => void }) {
+function TableMenu({ editor, onClose, pos }: { editor: any; onClose: () => void; pos: { top: number; left: number } }) {
   const inTable = editor.can().addColumnAfter()
-
   const Section = ({ title }: { title: string }) => (
     <div style={{ fontSize: 10, fontWeight: 600, color: '#8a96a2', textTransform: 'uppercase', letterSpacing: '0.08em', padding: '8px 12px 4px' }}>{title}</div>
   )
-
   const Item = ({ label, onClick, danger, disabled }: { label: string; onClick: () => void; danger?: boolean; disabled?: boolean }) => (
     <button
       onMouseDown={e => { e.preventDefault(); if (!disabled) { onClick(); onClose() } }}
       disabled={disabled}
-      style={{
-        display: 'block', width: '100%', textAlign: 'left',
-        padding: '6px 12px', fontSize: 12, border: 'none',
-        background: 'transparent', cursor: disabled ? 'default' : 'pointer',
-        color: disabled ? '#ccc' : danger ? '#943030' : '#1a1f24',
-        borderRadius: 4,
-      }}
+      style={{ display: 'block', width: '100%', textAlign: 'left', padding: '6px 12px', fontSize: 12, border: 'none', background: 'transparent', cursor: disabled ? 'default' : 'pointer', color: disabled ? '#ccc' : danger ? '#943030' : '#1a1f24', borderRadius: 4 }}
       onMouseEnter={e => { if (!disabled) e.currentTarget.style.background = 'rgba(0,0,0,0.04)' }}
       onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
     >{label}</button>
   )
-
   return (
-    <div style={{
-      position: 'absolute', top: 36, left: 0, zIndex: 9999,
-      background: '#fff', border: '0.5px solid rgba(0,0,0,0.15)',
-      borderRadius: 10, boxShadow: '0 4px 24px rgba(0,0,0,0.14)',
-      minWidth: 200, padding: '6px 0',
-    }}>
+    <div style={{ position: 'fixed', top: pos.top, left: pos.left, zIndex: 9999, background: '#fff', border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 10, boxShadow: '0 4px 24px rgba(0,0,0,0.14)', minWidth: 200, padding: '6px 0' }}>
       <Section title="Insert" />
       <Item label="Insert table (3×3)" onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()} />
       <Item label="Insert table (5×3)" onClick={() => editor.chain().focus().insertTable({ rows: 5, cols: 3, withHeaderRow: true }).run()} />
-
       <div style={{ height: 1, background: 'rgba(0,0,0,0.08)', margin: '4px 0' }} />
       <Section title="Columns" />
       <Item label="Add column before" disabled={!inTable} onClick={() => editor.chain().focus().addColumnBefore().run()} />
       <Item label="Add column after"  disabled={!inTable} onClick={() => editor.chain().focus().addColumnAfter().run()} />
       <Item label="Delete column"     disabled={!inTable} danger onClick={() => editor.chain().focus().deleteColumn().run()} />
-
       <div style={{ height: 1, background: 'rgba(0,0,0,0.08)', margin: '4px 0' }} />
       <Section title="Rows" />
       <Item label="Add row before" disabled={!inTable} onClick={() => editor.chain().focus().addRowBefore().run()} />
       <Item label="Add row after"  disabled={!inTable} onClick={() => editor.chain().focus().addRowAfter().run()} />
       <Item label="Delete row"     disabled={!inTable} danger onClick={() => editor.chain().focus().deleteRow().run()} />
-
       <div style={{ height: 1, background: 'rgba(0,0,0,0.08)', margin: '4px 0' }} />
       <Section title="Table" />
       <Item label="Toggle header row" disabled={!inTable} onClick={() => editor.chain().focus().toggleHeaderRow().run()} />
-      <Item label="Merge cells"       disabled={!inTable || !editor.can().mergeCells()} onClick={() => editor.chain().focus().mergeCells().run()} />
-      <Item label="Split cell"        disabled={!inTable || !editor.can().splitCell()} onClick={() => editor.chain().focus().splitCell().run()} />
       <Item label="Delete table" disabled={!inTable} danger onClick={() => editor.chain().focus().deleteTable().run()} />
     </div>
   )
@@ -158,43 +148,32 @@ function TableMenu({ editor, onClose }: { editor: any; onClose: () => void }) {
 
 // ── Font size panel ───────────────────────────────────────────────────────────
 
-function FontPanel({ sizes, onChange, onClose }: {
+function FontPanel({ sizes, onChange, onClose, pos }: {
   sizes: typeof DEFAULT_SIZES
   onChange: (key: keyof typeof DEFAULT_SIZES, val: number) => void
   onClose: () => void
+  pos: { top: number; left: number }
 }) {
   const rows: { key: keyof typeof DEFAULT_SIZES; label: string; style: React.CSSProperties }[] = [
-    { key: 'p',  label: 'Normal text', style: { fontSize: sizes.p, fontFamily: 'DM Sans, sans-serif' } },
+    { key: 'p',  label: 'Normal text', style: { fontSize: sizes.p } },
     { key: 'h1', label: 'Heading 1',   style: { fontSize: Math.min(sizes.h1, 26), fontFamily: 'Cormorant Garamond, serif', fontWeight: 700 } },
     { key: 'h2', label: 'Heading 2',   style: { fontSize: Math.min(sizes.h2, 22), fontFamily: 'Cormorant Garamond, serif', fontWeight: 600 } },
     { key: 'h3', label: 'Heading 3',   style: { fontSize: Math.min(sizes.h3, 16), fontWeight: 600 } },
     { key: 'h4', label: 'Heading 4',   style: { fontSize: sizes.h4, fontWeight: 600, color: '#5a6472' } },
   ]
-
   return (
-    <div style={{
-      position: 'absolute', top: 36, left: 0, zIndex: 9999,
-      background: '#fff', border: '0.5px solid rgba(0,0,0,0.15)',
-      borderRadius: 10, boxShadow: '0 4px 24px rgba(0,0,0,0.12)',
-      padding: 16, width: 310,
-    }}>
+    <div style={{ position: 'fixed', top: pos.top, left: pos.left, zIndex: 9999, background: '#fff', border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 10, boxShadow: '0 4px 24px rgba(0,0,0,0.12)', padding: 16, width: 310 }}>
       <div style={{ fontSize: 11, fontWeight: 600, color: '#5a6472', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 12 }}>Font sizes</div>
       {rows.map(r => (
         <div key={r.key} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 10, color: '#8a96a2', marginBottom: 1 }}>{r.label}</div>
-            <div style={{ ...r.style, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: 1.3 }}>
-              Sample text
-            </div>
+            <div style={{ ...r.style, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: 1.3 }}>Sample text</div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
-            <button onClick={() => onChange(r.key, Math.max(8, sizes[r.key] - 1))}
-              style={{ width: 24, height: 24, border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 4, background: '#f5f2ee', cursor: 'pointer', fontSize: 14 }}>−</button>
-            <input type="number" value={sizes[r.key]}
-              onChange={e => onChange(r.key, Math.max(8, Math.min(72, parseInt(e.target.value) || sizes[r.key])))}
-              style={{ width: 42, height: 24, textAlign: 'center', border: '0.5px solid rgba(0,0,0,0.2)', borderRadius: 4, fontSize: 12, outline: 'none' }} />
-            <button onClick={() => onChange(r.key, Math.min(72, sizes[r.key] + 1))}
-              style={{ width: 24, height: 24, border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 4, background: '#f5f2ee', cursor: 'pointer', fontSize: 14 }}>+</button>
+            <button onClick={() => onChange(r.key, Math.max(8, sizes[r.key] - 1))} style={{ width: 24, height: 24, border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 4, background: '#f5f2ee', cursor: 'pointer', fontSize: 14 }}>−</button>
+            <input type="number" value={sizes[r.key]} onChange={e => onChange(r.key, Math.max(8, Math.min(72, parseInt(e.target.value) || sizes[r.key])))} style={{ width: 42, height: 24, textAlign: 'center', border: '0.5px solid rgba(0,0,0,0.2)', borderRadius: 4, fontSize: 12, outline: 'none' }} />
+            <button onClick={() => onChange(r.key, Math.min(72, sizes[r.key] + 1))} style={{ width: 24, height: 24, border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 4, background: '#f5f2ee', cursor: 'pointer', fontSize: 14 }}>+</button>
           </div>
         </div>
       ))}
@@ -203,15 +182,74 @@ function FontPanel({ sizes, onChange, onClose }: {
   )
 }
 
+// ── Outline panel ─────────────────────────────────────────────────────────────
+
+function OutlinePanel({ items, onClose }: { items: TocItem[]; onClose: () => void }) {
+  return (
+    <div style={{ width: 220, flexShrink: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#faf9f7', borderRight: '1px solid #e0ddd8' }}>
+      <div style={{ padding: '10px 14px', borderBottom: '1px solid #e0ddd8', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#f5f2ee' }}>
+        <span style={{ fontSize: 11, fontWeight: 600, color: '#5a6472', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Outline</span>
+        <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#8a96a2', fontSize: 16, lineHeight: 1 }}>×</button>
+      </div>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
+        {items.length === 0 ? (
+          <div style={{ padding: '20px 14px', fontSize: 12, color: '#8a96a2', lineHeight: 1.5 }}>
+            No headings yet. Add H1, H2, or H3 headings to see the outline.
+          </div>
+        ) : items.map(item => (
+          <button
+            key={item.id}
+            onClick={() => {
+              const el = document.getElementById(item.id)
+              if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+            }}
+            style={{
+              display: 'block', width: '100%', textAlign: 'left',
+              padding: `5px 14px 5px ${8 + (item.level - 1) * 12}px`,
+              fontSize: item.level === 1 ? 12 : 11,
+              fontWeight: item.level === 1 ? 600 : item.level === 2 ? 500 : 400,
+              color: item.level === 1 ? '#1a1f24' : item.level === 2 ? '#2e3640' : '#5a6472',
+              border: 'none', background: 'transparent', cursor: 'pointer',
+              borderLeft: item.level === 1 ? '2px solid transparent' : 'none',
+              lineHeight: 1.4,
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.background = 'rgba(78,140,140,0.08)'
+              if (item.level === 1) e.currentTarget.style.borderLeftColor = '#4e8c8c'
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.background = 'transparent'
+              if (item.level === 1) e.currentTarget.style.borderLeftColor = 'transparent'
+            }}
+          >
+            {item.level > 1 && <span style={{ color: '#d8d4ce', marginRight: 4 }}>{'—'.repeat(item.level - 1)}</span>}
+            {item.textContent}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // ── Toolbar ───────────────────────────────────────────────────────────────────
 
-function Toolbar({ editor, sizes, onSizeChange }: {
+function Toolbar({ editor, sizes, onSizeChange, showOutline, onToggleOutline, onInsertToc }: {
   editor: any
   sizes: typeof DEFAULT_SIZES
   onSizeChange: (key: keyof typeof DEFAULT_SIZES, val: number) => void
+  showOutline: boolean
+  onToggleOutline: () => void
+  onInsertToc: () => void
 }) {
   const [showTable, setShowTable] = useState(false)
   const [showFont, setShowFont] = useState(false)
+  const [showToc, setShowToc] = useState(false)
+  const tableBtnRef = useRef<HTMLDivElement>(null)
+  const fontBtnRef = useRef<HTMLDivElement>(null)
+  const tocBtnRef = useRef<HTMLDivElement>(null)
+  const [tablePos, setTablePos] = useState({ top: 0, left: 0 })
+  const [fontPos, setFontPos] = useState({ top: 0, left: 0 })
+  const [tocPos, setTocPos] = useState({ top: 0, left: 0 })
 
   if (!editor) return null
 
@@ -222,29 +260,48 @@ function Toolbar({ editor, sizes, onSizeChange }: {
 
   const currentFont = FONTS.find(f => editor.isActive('textStyle', { fontFamily: f.value }))?.value || FONTS[0].value
 
+  function getPos(ref: React.RefObject<HTMLDivElement>) {
+    if (!ref.current) return { top: 0, left: 0 }
+    const r = ref.current.getBoundingClientRect()
+    return { top: r.bottom + 4, left: r.left }
+  }
+
   const Overlay = ({ onClose }: { onClose: () => void }) => (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 299 }} onClick={onClose} />
+    <div style={{ position: 'fixed', inset: 0, zIndex: 9998 }} onClick={onClose} />
+  )
+
+  // ToC submenu
+  const TocMenu = ({ pos, onClose }: { pos: { top: number; left: number }; onClose: () => void }) => (
+    <div style={{ position: 'fixed', top: pos.top, left: pos.left, zIndex: 9999, background: '#fff', border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 10, boxShadow: '0 4px 24px rgba(0,0,0,0.14)', minWidth: 220, padding: '6px 0' }}>
+      <button
+        onMouseDown={e => { e.preventDefault(); onToggleOutline(); onClose() }}
+        style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 14px', fontSize: 12, border: 'none', background: 'transparent', cursor: 'pointer', color: '#1a1f24' }}
+        onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.04)' }}
+        onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+      >
+        <div style={{ fontWeight: 500 }}>{showOutline ? 'Hide outline' : 'Show outline'}</div>
+        <div style={{ fontSize: 11, color: '#8a96a2', marginTop: 1 }}>Navigation panel with headings</div>
+      </button>
+      <div style={{ height: 1, background: 'rgba(0,0,0,0.08)', margin: '4px 0' }} />
+      <button
+        onMouseDown={e => { e.preventDefault(); onInsertToc(); onClose() }}
+        style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 14px', fontSize: 12, border: 'none', background: 'transparent', cursor: 'pointer', color: '#1a1f24' }}
+        onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.04)' }}
+        onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+      >
+        <div style={{ fontWeight: 500 }}>Insert Table of Contents</div>
+        <div style={{ fontSize: 11, color: '#8a96a2', marginTop: 1 }}>Add ToC block to document</div>
+      </button>
+    </div>
   )
 
   return (
-    <div style={{
-      display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1,
-      padding: '4px 10px', borderBottom: '1px solid #e0ddd8',
-      background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.06)', overflow: 'visible',
-    }}>
-      {/* Undo / Redo */}
-      <Btn title="Undo (Ctrl+Z)" disabled={!editor.can().undo()} onClick={() => editor.chain().focus().undo().run()}><I.Undo /></Btn>
-      <Btn title="Redo (Ctrl+Y)" disabled={!editor.can().redo()} onClick={() => editor.chain().focus().redo().run()}><I.Redo /></Btn>
-
+    <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1, padding: '4px 10px', borderBottom: '1px solid #e0ddd8', background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+      <Btn title="Undo" disabled={!editor.can().undo()} onClick={() => editor.chain().focus().undo().run()}><I.Undo /></Btn>
+      <Btn title="Redo" disabled={!editor.can().redo()} onClick={() => editor.chain().focus().redo().run()}><I.Redo /></Btn>
       <Sep />
 
-      {/* Heading style */}
-      <select value={headingValue}
-        onChange={e => {
-          const v = e.target.value
-          if (v === '0') editor.chain().focus().setParagraph().run()
-          else editor.chain().focus().toggleHeading({ level: parseInt(v) as 1|2|3|4 }).run()
-        }}
+      <select value={headingValue} onChange={e => { const v = e.target.value; if (v === '0') editor.chain().focus().setParagraph().run(); else editor.chain().focus().toggleHeading({ level: parseInt(v) as 1|2|3|4 }).run() }}
         style={{ height: 28, padding: '0 6px', fontSize: 12, border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 5, background: '#fff', cursor: 'pointer', color: '#2e3640' }}>
         <option value="0">Normal text</option>
         <option value="1">Heading 1</option>
@@ -253,78 +310,58 @@ function Toolbar({ editor, sizes, onSizeChange }: {
         <option value="4">Heading 4</option>
       </select>
 
-      {/* Font family */}
-      <select value={currentFont}
-        onChange={e => editor.chain().focus().setFontFamily(e.target.value).run()}
+      <select value={currentFont} onChange={e => editor.chain().focus().setFontFamily(e.target.value).run()}
         style={{ height: 28, padding: '0 6px', fontSize: 12, border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 5, background: '#fff', cursor: 'pointer', color: '#2e3640', maxWidth: 160, marginLeft: 4 }}>
-        {FONTS.map(f => (
-          <option key={f.value} value={f.value} style={{ fontFamily: f.value }}>{f.label}</option>
-        ))}
+        {FONTS.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
       </select>
 
-      {/* Font sizes panel */}
-      <div style={{ position: 'relative' }}>
-        <Btn title="Font sizes" active={showFont} onClick={() => { setShowFont(v => !v); setShowTable(false) }}>
+      <div ref={fontBtnRef}>
+        <Btn title="Font sizes" active={showFont} onClick={() => { setFontPos(getPos(fontBtnRef)); setShowFont(v => !v); setShowTable(false); setShowToc(false) }}>
           <span style={{ fontSize: 12, fontWeight: 600 }}>Aa</span>
-          <I.ChevronDown />
+          <I.ChevDown />
         </Btn>
-        {showFont && (
-          <>
-            <Overlay onClose={() => setShowFont(false)} />
-            <FontPanel sizes={sizes} onChange={onSizeChange} onClose={() => setShowFont(false)} />
-          </>
-        )}
       </div>
+      {showFont && (<><Overlay onClose={() => setShowFont(false)} /><FontPanel sizes={sizes} onChange={onSizeChange} onClose={() => setShowFont(false)} pos={fontPos} /></>)}
 
       <Sep />
-
-      {/* Inline formatting */}
-      <Btn title="Bold (Ctrl+B)" active={editor.isActive('bold')} onClick={() => editor.chain().focus().toggleBold().run()}><I.Bold /></Btn>
-      <Btn title="Italic (Ctrl+I)" active={editor.isActive('italic')} onClick={() => editor.chain().focus().toggleItalic().run()}><I.Italic /></Btn>
-      <Btn title="Underline (Ctrl+U)" active={editor.isActive('underline')} onClick={() => editor.chain().focus().toggleUnderline().run()}><I.Underline /></Btn>
+      <Btn title="Bold" active={editor.isActive('bold')} onClick={() => editor.chain().focus().toggleBold().run()}><I.Bold /></Btn>
+      <Btn title="Italic" active={editor.isActive('italic')} onClick={() => editor.chain().focus().toggleItalic().run()}><I.Italic /></Btn>
+      <Btn title="Underline" active={editor.isActive('underline')} onClick={() => editor.chain().focus().toggleUnderline().run()}><I.Underline /></Btn>
       <Btn title="Strikethrough" active={editor.isActive('strike')} onClick={() => editor.chain().focus().toggleStrike().run()}><I.Strike /></Btn>
       <Btn title="Highlight" active={editor.isActive('highlight')} onClick={() => editor.chain().focus().toggleHighlight().run()}><I.Highlight /></Btn>
-
       <Sep />
-
-      {/* Lists + quote */}
       <Btn title="Bullet list" active={editor.isActive('bulletList')} onClick={() => editor.chain().focus().toggleBulletList().run()}><I.BulletList /></Btn>
       <Btn title="Numbered list" active={editor.isActive('orderedList')} onClick={() => editor.chain().focus().toggleOrderedList().run()}><I.OrderedList /></Btn>
       <Btn title="Blockquote" active={editor.isActive('blockquote')} onClick={() => editor.chain().focus().toggleBlockquote().run()}><I.Blockquote /></Btn>
-
       <Sep />
-
-      {/* Alignment */}
       <Btn title="Align left" active={editor.isActive({ textAlign: 'left' })} onClick={() => editor.chain().focus().setTextAlign('left').run()}><I.AlignLeft /></Btn>
       <Btn title="Align center" active={editor.isActive({ textAlign: 'center' })} onClick={() => editor.chain().focus().setTextAlign('center').run()}><I.AlignCenter /></Btn>
       <Btn title="Align right" active={editor.isActive({ textAlign: 'right' })} onClick={() => editor.chain().focus().setTextAlign('right').run()}><I.AlignRight /></Btn>
       <Btn title="Justify" active={editor.isActive({ textAlign: 'justify' })} onClick={() => editor.chain().focus().setTextAlign('justify').run()}><I.AlignJust /></Btn>
-
       <Sep />
 
-      {/* Table submenu */}
-      <div style={{ position: 'relative' }}>
-        <Btn title="Table" active={showTable || editor.can().addColumnAfter()} onClick={() => { setShowTable(v => !v); setShowFont(false) }}>
-          <I.Table />
-          <I.ChevronDown />
+      <div ref={tableBtnRef}>
+        <Btn title="Table" active={showTable} onClick={() => { setTablePos(getPos(tableBtnRef)); setShowTable(v => !v); setShowFont(false); setShowToc(false) }}>
+          <I.Table /><I.ChevDown />
         </Btn>
-        {showTable && (
-          <>
-            <Overlay onClose={() => setShowTable(false)} />
-            <TableMenu editor={editor} onClose={() => setShowTable(false)} />
-          </>
-        )}
       </div>
+      {showTable && (<><Overlay onClose={() => setShowTable(false)} /><TableMenu editor={editor} onClose={() => setShowTable(false)} pos={tablePos} /></>)}
 
       <Sep />
 
-      {/* Misc */}
-      <Btn title="Horizontal rule" onClick={() => editor.chain().focus().setHorizontalRule().run()}><I.HRule /></Btn>
+      {/* ToC button */}
+      <div ref={tocBtnRef}>
+        <Btn title="Table of Contents" active={showToc || showOutline} onClick={() => { setTocPos(getPos(tocBtnRef)); setShowToc(v => !v); setShowTable(false); setShowFont(false) }}>
+          <I.ToC /><I.ChevDown />
+        </Btn>
+      </div>
+      {showToc && (<><Overlay onClose={() => setShowToc(false)} /><TocMenu pos={tocPos} onClose={() => setShowToc(false)} /></>)}
+
     </div>
   )
 }
 
-// ── Editor CSS ────────────────────────────────────────────────────────────────
+// ── Editor styles ─────────────────────────────────────────────────────────────
 
 function buildEditorStyles(sizes: typeof DEFAULT_SIZES) {
   return `
@@ -337,7 +374,6 @@ function buildEditorStyles(sizes: typeof DEFAULT_SIZES) {
     .ProseMirror ul { list-style-type: disc !important; padding-left: 24px; margin: 6px 0 10px; }
     .ProseMirror ol { list-style-type: decimal !important; padding-left: 24px; margin: 6px 0 10px; }
     .ProseMirror ul ul { list-style-type: circle !important; }
-    .ProseMirror ul ul ul { list-style-type: square !important; }
     .ProseMirror li { margin-bottom: 3px; }
     .ProseMirror li p { margin: 0; display: inline; }
     .ProseMirror blockquote { border-left: 3px solid #4e8c8c; margin: 12px 0; padding: 8px 16px; background: rgba(78,140,140,0.05); color: #5a6472; font-style: italic; border-radius: 0 4px 4px 0; }
@@ -349,6 +385,12 @@ function buildEditorStyles(sizes: typeof DEFAULT_SIZES) {
     .ProseMirror mark { background: #fff3b0; border-radius: 2px; padding: 1px 2px; }
     .ProseMirror .selectedCell { background: rgba(78,140,140,0.1) !important; }
     .ProseMirror p.is-editor-empty:first-child::before { content: attr(data-placeholder); float: left; color: #8a96a2; pointer-events: none; height: 0; font-style: italic; }
+    .toc-block { background: #f5f2ee; border: 1px solid #e0ddd8; border-radius: 6px; padding: 16px 20px; margin: 16px 0; }
+    .toc-block h4 { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: #8a96a2; margin: 0 0 10px; border: none; }
+    .toc-block ol { margin: 0; padding-left: 18px; }
+    .toc-block li { font-size: 13px; margin-bottom: 4px; color: #2e3640; }
+    .toc-block li.toc-h2 { padding-left: 12px; font-size: 12px; color: #5a6472; }
+    .toc-block li.toc-h3 { padding-left: 24px; font-size: 11px; color: #8a96a2; }
     .tableWrapper { overflow-x: auto; }
     .column-resize-handle { background-color: #4e8c8c; bottom: -2px; position: absolute; right: -2px; top: 0; width: 4px; pointer-events: none; }
   `
@@ -356,7 +398,7 @@ function buildEditorStyles(sizes: typeof DEFAULT_SIZES) {
 
 // ── Extensions ────────────────────────────────────────────────────────────────
 
-function makeExtensions(placeholder: string) {
+function makeExtensions(placeholder: string, onTocUpdate: (items: TocItem[]) => void) {
   return [
     StarterKit,
     TextStyle,
@@ -368,6 +410,10 @@ function makeExtensions(placeholder: string) {
     TableRow, TableHeader, TableCell,
     Placeholder.configure({ placeholder }),
     CharacterCount,
+    TableOfContents.configure({
+      getIndex: getHierarchicalIndexes,
+      onUpdate: (content: any) => onTocUpdate(content),
+    }),
   ]
 }
 
@@ -383,12 +429,14 @@ export default function DocumentEditorPage() {
   const [loading, setLoading] = useState(true)
   const [saveState, setSaveState] = useState<SaveState>('saved')
   const [showReference, setShowReference] = useState(true)
+  const [showOutline, setShowOutline] = useState(false)
   const [docStatus, setDocStatus] = useState('draft')
   const [hasExample, setHasExample] = useState(false)
   const [userRole, setUserRole] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [wordCount, setWordCount] = useState(0)
   const [sizes, setSizes] = useState(DEFAULT_SIZES)
+  const [tocItems, setTocItems] = useState<TocItem[]>([])
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const latestContent = useRef<any>(null)
@@ -440,8 +488,19 @@ export default function DocumentEditorPage() {
     setSubmitting(false)
   }
 
+  // Insert ToC as formatted HTML block
+  function insertToc() {
+    if (!editor || tocItems.length === 0) return
+    const lines = tocItems.map(item => {
+      const cls = item.level === 1 ? '' : item.level === 2 ? ' class="toc-h2"' : ' class="toc-h3"'
+      return `<li${cls}>${item.itemIndex ? item.itemIndex + '. ' : ''}${item.textContent}</li>`
+    }).join('')
+    const html = `<div class="toc-block"><h4>Table of Contents</h4><ol>${lines}</ol></div>`
+    editor.chain().focus().insertContent(html).run()
+  }
+
   const editor = useEditor({
-    extensions: makeExtensions('Start writing…'),
+    extensions: makeExtensions('Start writing…', setTocItems),
     content: '',
     editorProps: { attributes: { style: 'outline: none;' } },
     onUpdate: ({ editor }) => {
@@ -463,7 +522,7 @@ export default function DocumentEditorPage() {
   }, [editor, doc])
 
   const refEditor = useEditor({
-    extensions: makeExtensions(''),
+    extensions: makeExtensions('', () => {}),
     content: '', editable: false,
     editorProps: { attributes: { style: 'outline: none;' } },
   })
@@ -552,16 +611,30 @@ export default function DocumentEditorPage() {
 
       {/* Split pane */}
       <div style={{ flex: 1, overflow: 'hidden', display: 'grid', gridTemplateColumns: showReference ? '1fr 1fr' : '1fr' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', overflow: 'visible', borderRight: showReference ? '1px solid #d8d4ce' : 'none', background: '#f5f2ee' }}>
-          {!(isClient && isApproved) && <Toolbar editor={editor} sizes={sizes} onSizeChange={handleSizeChange} />}
-          <div style={{ flex: 1, overflowY: 'auto', padding: '32px 24px' }}>
-            <div style={{ maxWidth: 780, margin: '0 auto', background: '#fff', boxShadow: '0 1px 4px rgba(0,0,0,0.08), 0 4px 16px rgba(0,0,0,0.04)', borderRadius: 2, padding: '60px 72px', minHeight: 900 }}>
-              <EditorContent editor={isClient && isApproved ? refEditor : editor} />
+
+        {/* Left — editable */}
+        <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRight: showReference ? '1px solid #d8d4ce' : 'none' }}>
+          {!(isClient && isApproved) && (
+            <Toolbar
+              editor={editor} sizes={sizes} onSizeChange={handleSizeChange}
+              showOutline={showOutline} onToggleOutline={() => setShowOutline(v => !v)}
+              onInsertToc={insertToc}
+            />
+          )}
+          <div style={{ flex: 1, overflow: 'hidden', display: 'flex' }}>
+            {/* Outline panel */}
+            {showOutline && <OutlinePanel items={tocItems} onClose={() => setShowOutline(false)} />}
+            {/* Page scroll area */}
+            <div style={{ flex: 1, overflowY: 'auto', padding: '32px 24px', background: '#f5f2ee' }}>
+              <div style={{ maxWidth: 780, margin: '0 auto', background: '#fff', boxShadow: '0 1px 4px rgba(0,0,0,0.08), 0 4px 16px rgba(0,0,0,0.04)', borderRadius: 2, padding: '60px 72px', minHeight: 900 }}>
+                <EditorContent editor={isClient && isApproved ? refEditor : editor} />
+              </div>
+              <div style={{ height: 48 }} />
             </div>
-            <div style={{ height: 48 }} />
           </div>
         </div>
 
+        {/* Right — example */}
         {showReference && (
           <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#ede9e3' }}>
             <div style={{ padding: '8px 16px', flexShrink: 0, borderBottom: '1px solid #d8d4ce', background: '#e8e3dc', fontSize: 11, fontWeight: 600, color: '#5a6472', display: 'flex', alignItems: 'center', gap: 6, textTransform: 'uppercase' as const, letterSpacing: '0.06em' }}>
