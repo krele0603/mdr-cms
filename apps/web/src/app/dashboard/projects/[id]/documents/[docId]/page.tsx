@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useEditor, EditorContent } from '@tiptap/react'
+import { Mark, mergeAttributes } from '@tiptap/core'
 import StarterKit from '@tiptap/starter-kit'
 import Underline from '@tiptap/extension-underline'
 import TextAlign from '@tiptap/extension-text-align'
@@ -18,6 +19,30 @@ import FontFamily from '@tiptap/extension-font-family'
 import TextStyle from '@tiptap/extension-text-style'
 import { TableOfContents, getHierarchicalIndexes } from '@tiptap/extension-table-of-contents'
 
+// ── CommentMark — invisible anchor stored in doc JSON ─────────────────────────
+// Renders as a highlighted span with data-comment-id attribute
+// Stripped on export, never shown in print
+
+const CommentMark = Mark.create({
+  name: 'commentMark',
+  keepOnSplit: false,
+  excludes: '',
+  addAttributes() {
+    return {
+      commentId: { default: null, parseHTML: el => el.getAttribute('data-comment-id'), renderHTML: attrs => ({ 'data-comment-id': attrs.commentId }) },
+      resolved: { default: false, parseHTML: el => el.getAttribute('data-resolved') === 'true', renderHTML: attrs => ({ 'data-resolved': attrs.resolved }) },
+    }
+  },
+  parseHTML() { return [{ tag: 'span[data-comment-id]' }] },
+  renderHTML({ HTMLAttributes }) {
+    const resolved = HTMLAttributes['data-resolved'] === true || HTMLAttributes['data-resolved'] === 'true'
+    return ['span', mergeAttributes(HTMLAttributes, {
+      class: resolved ? 'comment-anchor comment-anchor--resolved' : 'comment-anchor',
+      style: 'cursor: pointer;',
+    }), 0]
+  },
+})
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface DocData {
@@ -25,27 +50,28 @@ interface DocData {
   content: any; status: string; updated_at: string
   template_version_id: string | null; template_version: string | null
   example_content: any; template_name: string | null
-  tag_code: string | null; project_name: string; device_name: string
-  revision?: number
+  tag_code: string | null; project_name: string; device_name: string; revision?: number
 }
 
 interface Comment {
   id: string; parent_id: string | null; content: string
+  anchor_text: string | null; anchor_id: string | null
   resolved: boolean; resolved_at: string | null; created_at: string
   author_id: string; author_name: string; author_role: string
-  resolved_by_name: string | null
 }
 
-type SaveState = 'saved' | 'saving' | 'unsaved' | 'error'
+interface Member { user_id: string; name: string; user_role: string }
 
+type SaveState = 'saved' | 'saving' | 'unsaved' | 'error'
+type CommentFilter = 'open' | 'resolved'
 interface TocItem { id: string; textContent: string; level: number; itemIndex: number }
 
 const DOC_STATUS: Record<string, { bg: string; color: string; border: string; label: string }> = {
-  draft:       { bg: '#f5f2ee',                   color: '#5a6472', border: 'rgba(90,100,114,0.3)',   label: 'Draft' },
-  inprogress:  { bg: 'rgba(200,169,110,0.12)',     color: '#8a6020', border: 'rgba(200,169,110,0.4)', label: 'In progress' },
-  review:      { bg: 'rgba(78,140,140,0.1)',       color: '#2e5f5f', border: 'rgba(78,140,140,0.3)',  label: 'In review' },
-  approved:    { bg: 'rgba(58,122,90,0.1)',        color: '#3a7a5a', border: 'rgba(58,122,90,0.3)',   label: 'Approved' },
-  superseded:  { bg: 'rgba(90,100,114,0.08)',      color: '#8a96a2', border: 'rgba(90,100,114,0.2)', label: 'Superseded' },
+  draft:      { bg: '#f5f2ee',               color: '#5a6472', border: 'rgba(90,100,114,0.3)',   label: 'Draft' },
+  inprogress: { bg: 'rgba(200,169,110,0.12)', color: '#8a6020', border: 'rgba(200,169,110,0.4)', label: 'In progress' },
+  review:     { bg: 'rgba(78,140,140,0.1)',   color: '#2e5f5f', border: 'rgba(78,140,140,0.3)',  label: 'In review' },
+  approved:   { bg: 'rgba(58,122,90,0.1)',    color: '#3a7a5a', border: 'rgba(58,122,90,0.3)',   label: 'Approved' },
+  superseded: { bg: 'rgba(90,100,114,0.08)',  color: '#8a96a2', border: 'rgba(90,100,114,0.2)', label: 'Superseded' },
 }
 
 const DEFAULT_SIZES = { p: 14, h1: 26, h2: 20, h3: 15, h4: 14 }
@@ -80,20 +106,17 @@ const I = {
   Redo:        () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3L21 13"/></svg>,
   ChevDown:    () => <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="6 9 12 15 18 9"/></svg>,
   ToC:         () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="3" y1="5" x2="21" y2="5"/><line x1="6" y1="9" x2="21" y2="9"/><line x1="6" y1="13" x2="21" y2="13"/><line x1="9" y1="17" x2="21" y2="17"/><line x1="3" y1="5" x2="3" y2="17"/></svg>,
-  Comment:     () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>,
+  Comment:     () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>,
   Download:    () => <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>,
 }
 
 // ── Shared primitives ─────────────────────────────────────────────────────────
 
 function Btn({ active, disabled, onClick, title, children, danger }: {
-  active?: boolean; disabled?: boolean; onClick: () => void
-  title: string; children: React.ReactNode; danger?: boolean
+  active?: boolean; disabled?: boolean; onClick: () => void; title: string; children: React.ReactNode; danger?: boolean
 }) {
   return (
-    <button
-      onMouseDown={e => { e.preventDefault(); if (!disabled) onClick() }}
-      disabled={disabled} title={title}
+    <button onMouseDown={e => { e.preventDefault(); if (!disabled) onClick() }} disabled={disabled} title={title}
       style={{ height: 30, minWidth: 30, padding: '0 6px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3, border: 'none', borderRadius: 5, background: active ? 'rgba(78,140,140,0.15)' : 'transparent', color: active ? '#2e5f5f' : disabled ? '#ccc' : danger ? '#943030' : '#2e3640', cursor: disabled ? 'default' : 'pointer', fontSize: 12 }}
       onMouseEnter={e => { if (!disabled && !active) e.currentTarget.style.background = 'rgba(0,0,0,0.05)' }}
       onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent' }}
@@ -101,13 +124,8 @@ function Btn({ active, disabled, onClick, title, children, danger }: {
   )
 }
 
-function Sep() {
-  return <div style={{ width: 1, height: 20, background: 'rgba(0,0,0,0.12)', margin: '0 3px', flexShrink: 0 }} />
-}
-
-function Overlay({ onClose }: { onClose: () => void }) {
-  return <div style={{ position: 'fixed', inset: 0, zIndex: 9998 }} onClick={onClose} />
-}
+function Sep() { return <div style={{ width: 1, height: 20, background: 'rgba(0,0,0,0.12)', margin: '0 3px', flexShrink: 0 }} /> }
+function Overlay({ onClose }: { onClose: () => void }) { return <div style={{ position: 'fixed', inset: 0, zIndex: 9998 }} onClick={onClose} /> }
 
 // ── Submenus ──────────────────────────────────────────────────────────────────
 
@@ -123,30 +141,15 @@ function TableMenu({ editor, onClose, pos }: { editor: any; onClose: () => void;
   )
   return (
     <div style={{ position: 'fixed', top: pos.top, left: pos.left, zIndex: 9999, background: '#fff', border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 10, boxShadow: '0 4px 24px rgba(0,0,0,0.14)', minWidth: 200, padding: '6px 0' }}>
-      <S title="Insert" />
-      <Item label="Insert table (3×3)" onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()} />
-      <Item label="Insert table (5×3)" onClick={() => editor.chain().focus().insertTable({ rows: 5, cols: 3, withHeaderRow: true }).run()} />
-      <div style={{ height: 1, background: 'rgba(0,0,0,0.08)', margin: '4px 0' }} />
-      <S title="Columns" />
-      <Item label="Add column before" disabled={!inTable} onClick={() => editor.chain().focus().addColumnBefore().run()} />
-      <Item label="Add column after"  disabled={!inTable} onClick={() => editor.chain().focus().addColumnAfter().run()} />
-      <Item label="Delete column"     disabled={!inTable} danger onClick={() => editor.chain().focus().deleteColumn().run()} />
-      <div style={{ height: 1, background: 'rgba(0,0,0,0.08)', margin: '4px 0' }} />
-      <S title="Rows" />
-      <Item label="Add row before" disabled={!inTable} onClick={() => editor.chain().focus().addRowBefore().run()} />
-      <Item label="Add row after"  disabled={!inTable} onClick={() => editor.chain().focus().addRowAfter().run()} />
-      <Item label="Delete row"     disabled={!inTable} danger onClick={() => editor.chain().focus().deleteRow().run()} />
-      <div style={{ height: 1, background: 'rgba(0,0,0,0.08)', margin: '4px 0' }} />
-      <S title="Table" />
-      <Item label="Toggle header row" disabled={!inTable} onClick={() => editor.chain().focus().toggleHeaderRow().run()} />
-      <Item label="Delete table" disabled={!inTable} danger onClick={() => editor.chain().focus().deleteTable().run()} />
+      <S title="Insert" /><Item label="Insert table (3×3)" onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()} /><Item label="Insert table (5×3)" onClick={() => editor.chain().focus().insertTable({ rows: 5, cols: 3, withHeaderRow: true }).run()} />
+      <div style={{ height: 1, background: 'rgba(0,0,0,0.08)', margin: '4px 0' }} /><S title="Columns" /><Item label="Add column before" disabled={!inTable} onClick={() => editor.chain().focus().addColumnBefore().run()} /><Item label="Add column after" disabled={!inTable} onClick={() => editor.chain().focus().addColumnAfter().run()} /><Item label="Delete column" disabled={!inTable} danger onClick={() => editor.chain().focus().deleteColumn().run()} />
+      <div style={{ height: 1, background: 'rgba(0,0,0,0.08)', margin: '4px 0' }} /><S title="Rows" /><Item label="Add row before" disabled={!inTable} onClick={() => editor.chain().focus().addRowBefore().run()} /><Item label="Add row after" disabled={!inTable} onClick={() => editor.chain().focus().addRowAfter().run()} /><Item label="Delete row" disabled={!inTable} danger onClick={() => editor.chain().focus().deleteRow().run()} />
+      <div style={{ height: 1, background: 'rgba(0,0,0,0.08)', margin: '4px 0' }} /><S title="Table" /><Item label="Toggle header row" disabled={!inTable} onClick={() => editor.chain().focus().toggleHeaderRow().run()} /><Item label="Delete table" disabled={!inTable} danger onClick={() => editor.chain().focus().deleteTable().run()} />
     </div>
   )
 }
 
-function FontPanel({ sizes, onChange, onClose, pos }: {
-  sizes: typeof DEFAULT_SIZES; onChange: (key: keyof typeof DEFAULT_SIZES, val: number) => void; onClose: () => void; pos: { top: number; left: number }
-}) {
+function FontPanel({ sizes, onChange, onClose, pos }: { sizes: typeof DEFAULT_SIZES; onChange: (k: keyof typeof DEFAULT_SIZES, v: number) => void; onClose: () => void; pos: { top: number; left: number } }) {
   const rows: { key: keyof typeof DEFAULT_SIZES; label: string; style: React.CSSProperties }[] = [
     { key: 'p',  label: 'Normal text', style: { fontSize: sizes.p } },
     { key: 'h1', label: 'Heading 1',   style: { fontSize: Math.min(sizes.h1, 26), fontFamily: 'Cormorant Garamond, serif', fontWeight: 700 } },
@@ -159,10 +162,7 @@ function FontPanel({ sizes, onChange, onClose, pos }: {
       <div style={{ fontSize: 11, fontWeight: 600, color: '#5a6472', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 12 }}>Font sizes</div>
       {rows.map(r => (
         <div key={r.key} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 10, color: '#8a96a2', marginBottom: 1 }}>{r.label}</div>
-            <div style={{ ...r.style, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: 1.3 }}>Sample text</div>
-          </div>
+          <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 10, color: '#8a96a2', marginBottom: 1 }}>{r.label}</div><div style={{ ...r.style, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: 1.3 }}>Sample text</div></div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
             <button onClick={() => onChange(r.key, Math.max(8, sizes[r.key] - 1))} style={{ width: 24, height: 24, border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 4, background: '#f5f2ee', cursor: 'pointer', fontSize: 14 }}>−</button>
             <input type="number" value={sizes[r.key]} onChange={e => onChange(r.key, Math.max(8, Math.min(72, parseInt(e.target.value) || sizes[r.key])))} style={{ width: 42, height: 24, textAlign: 'center', border: '0.5px solid rgba(0,0,0,0.2)', borderRadius: 4, fontSize: 12, outline: 'none' }} />
@@ -175,32 +175,21 @@ function FontPanel({ sizes, onChange, onClose, pos }: {
   )
 }
 
-function TocMenu({ pos, onClose, showOutline, onToggleOutline, onInsertToc }: {
-  pos: { top: number; left: number }; onClose: () => void
-  showOutline: boolean; onToggleOutline: () => void; onInsertToc: () => void
-}) {
+function TocMenu({ pos, onClose, showOutline, onToggleOutline, onInsertToc }: { pos: { top: number; left: number }; onClose: () => void; showOutline: boolean; onToggleOutline: () => void; onInsertToc: () => void }) {
   return (
     <div style={{ position: 'fixed', top: pos.top, left: pos.left, zIndex: 9999, background: '#fff', border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 10, boxShadow: '0 4px 24px rgba(0,0,0,0.14)', minWidth: 220, padding: '6px 0' }}>
-      <button onMouseDown={e => { e.preventDefault(); onToggleOutline(); onClose() }}
-        style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 14px', fontSize: 12, border: 'none', background: 'transparent', cursor: 'pointer', color: '#1a1f24' }}
-        onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.04)' }}
-        onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}>
+      <button onMouseDown={e => { e.preventDefault(); onToggleOutline(); onClose() }} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 14px', fontSize: 12, border: 'none', background: 'transparent', cursor: 'pointer', color: '#1a1f24' }} onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.04)' }} onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}>
         <div style={{ fontWeight: 500 }}>{showOutline ? 'Hide outline' : 'Show outline'}</div>
         <div style={{ fontSize: 11, color: '#8a96a2', marginTop: 1 }}>Navigation panel with headings</div>
       </button>
       <div style={{ height: 1, background: 'rgba(0,0,0,0.08)', margin: '4px 0' }} />
-      <button onMouseDown={e => { e.preventDefault(); onInsertToc(); onClose() }}
-        style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 14px', fontSize: 12, border: 'none', background: 'transparent', cursor: 'pointer', color: '#1a1f24' }}
-        onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.04)' }}
-        onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}>
+      <button onMouseDown={e => { e.preventDefault(); onInsertToc(); onClose() }} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 14px', fontSize: 12, border: 'none', background: 'transparent', cursor: 'pointer', color: '#1a1f24' }} onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.04)' }} onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}>
         <div style={{ fontWeight: 500 }}>Insert Table of Contents</div>
         <div style={{ fontSize: 11, color: '#8a96a2', marginTop: 1 }}>Add ToC block to document</div>
       </button>
     </div>
   )
 }
-
-// ── Outline panel ─────────────────────────────────────────────────────────────
 
 function OutlinePanel({ items, onClose }: { items: TocItem[]; onClose: () => void }) {
   return (
@@ -210,11 +199,9 @@ function OutlinePanel({ items, onClose }: { items: TocItem[]; onClose: () => voi
         <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#8a96a2', fontSize: 16, lineHeight: 1 }}>×</button>
       </div>
       <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
-        {items.length === 0 ? (
-          <div style={{ padding: '20px 14px', fontSize: 12, color: '#8a96a2', lineHeight: 1.5 }}>No headings yet.</div>
-        ) : items.map(item => (
-          <button key={item.id}
-            onClick={() => { const el = document.getElementById(item.id); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }) }}
+        {items.length === 0 ? <div style={{ padding: '20px 14px', fontSize: 12, color: '#8a96a2' }}>No headings yet.</div>
+          : items.map(item => (
+          <button key={item.id} onClick={() => { const el = document.getElementById(item.id); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }) }}
             style={{ display: 'block', width: '100%', textAlign: 'left', padding: `5px 14px 5px ${8 + (item.level - 1) * 12}px`, fontSize: item.level === 1 ? 12 : 11, fontWeight: item.level === 1 ? 600 : item.level === 2 ? 500 : 400, color: item.level === 1 ? '#1a1f24' : item.level === 2 ? '#2e3640' : '#5a6472', border: 'none', background: 'transparent', cursor: 'pointer', lineHeight: 1.4 }}
             onMouseEnter={e => { e.currentTarget.style.background = 'rgba(78,140,140,0.08)' }}
             onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
@@ -243,36 +230,22 @@ function Toolbar({ editor, sizes, onSizeChange, showOutline, onToggleOutline, on
   const [tablePos, setTablePos] = useState({ top: 0, left: 0 })
   const [fontPos, setFontPos] = useState({ top: 0, left: 0 })
   const [tocPos, setTocPos] = useState({ top: 0, left: 0 })
-
   if (!editor) return null
-
   const headingValue = editor.isActive('heading', { level: 1 }) ? '1' : editor.isActive('heading', { level: 2 }) ? '2' : editor.isActive('heading', { level: 3 }) ? '3' : editor.isActive('heading', { level: 4 }) ? '4' : '0'
   const currentFont = FONTS.find(f => editor.isActive('textStyle', { fontFamily: f.value }))?.value || FONTS[0].value
-
-  function getPos(ref: React.RefObject<HTMLDivElement>) {
-    if (!ref.current) return { top: 0, left: 0 }
-    const r = ref.current.getBoundingClientRect()
-    return { top: r.bottom + 4, left: r.left }
-  }
-
+  function getPos(ref: React.RefObject<HTMLDivElement>) { if (!ref.current) return { top: 0, left: 0 }; const r = ref.current.getBoundingClientRect(); return { top: r.bottom + 4, left: r.left } }
   return (
     <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'nowrap', gap: 1, padding: '4px 10px', borderBottom: '1px solid #e0ddd8', background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.06)', overflowX: 'auto' }}>
       <Btn title="Undo" disabled={!editor.can().undo()} onClick={() => editor.chain().focus().undo().run()}><I.Undo /></Btn>
       <Btn title="Redo" disabled={!editor.can().redo()} onClick={() => editor.chain().focus().redo().run()}><I.Redo /></Btn>
       <Sep />
-      <select value={headingValue} onChange={e => { const v = e.target.value; if (v === '0') editor.chain().focus().setParagraph().run(); else editor.chain().focus().toggleHeading({ level: parseInt(v) as 1|2|3|4 }).run() }}
-        style={{ height: 28, padding: '0 6px', fontSize: 12, border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 5, background: '#fff', cursor: 'pointer', color: '#2e3640' }}>
+      <select value={headingValue} onChange={e => { const v = e.target.value; if (v === '0') editor.chain().focus().setParagraph().run(); else editor.chain().focus().toggleHeading({ level: parseInt(v) as 1|2|3|4 }).run() }} style={{ height: 28, padding: '0 6px', fontSize: 12, border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 5, background: '#fff', cursor: 'pointer', color: '#2e3640' }}>
         <option value="0">Normal text</option><option value="1">Heading 1</option><option value="2">Heading 2</option><option value="3">Heading 3</option><option value="4">Heading 4</option>
       </select>
-      <select value={currentFont} onChange={e => editor.chain().focus().setFontFamily(e.target.value).run()}
-        style={{ height: 28, padding: '0 6px', fontSize: 12, border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 5, background: '#fff', cursor: 'pointer', color: '#2e3640', maxWidth: 160, marginLeft: 4 }}>
+      <select value={currentFont} onChange={e => editor.chain().focus().setFontFamily(e.target.value).run()} style={{ height: 28, padding: '0 6px', fontSize: 12, border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 5, background: '#fff', cursor: 'pointer', color: '#2e3640', maxWidth: 160, marginLeft: 4 }}>
         {FONTS.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
       </select>
-      <div ref={fontRef}>
-        <Btn title="Font sizes" active={showFont} onClick={() => { setFontPos(getPos(fontRef)); setShowFont(v => !v); setShowTable(false); setShowToc(false) }}>
-          <span style={{ fontSize: 12, fontWeight: 600 }}>Aa</span><I.ChevDown />
-        </Btn>
-      </div>
+      <div ref={fontRef}><Btn title="Font sizes" active={showFont} onClick={() => { setFontPos(getPos(fontRef)); setShowFont(v => !v); setShowTable(false); setShowToc(false) }}><span style={{ fontSize: 12, fontWeight: 600 }}>Aa</span><I.ChevDown /></Btn></div>
       {showFont && (<><Overlay onClose={() => setShowFont(false)} /><FontPanel sizes={sizes} onChange={onSizeChange} onClose={() => setShowFont(false)} pos={fontPos} /></>)}
       <Sep />
       <Btn title="Bold" active={editor.isActive('bold')} onClick={() => editor.chain().focus().toggleBold().run()}><I.Bold /></Btn>
@@ -290,70 +263,152 @@ function Toolbar({ editor, sizes, onSizeChange, showOutline, onToggleOutline, on
       <Btn title="Align right" active={editor.isActive({ textAlign: 'right' })} onClick={() => editor.chain().focus().setTextAlign('right').run()}><I.AlignRight /></Btn>
       <Btn title="Justify" active={editor.isActive({ textAlign: 'justify' })} onClick={() => editor.chain().focus().setTextAlign('justify').run()}><I.AlignJust /></Btn>
       <Sep />
-      <div ref={tableRef}>
-        <Btn title="Table" active={showTable} onClick={() => { setTablePos(getPos(tableRef)); setShowTable(v => !v); setShowFont(false); setShowToc(false) }}>
-          <I.Table /><I.ChevDown />
-        </Btn>
-      </div>
+      <div ref={tableRef}><Btn title="Table" active={showTable} onClick={() => { setTablePos(getPos(tableRef)); setShowTable(v => !v); setShowFont(false); setShowToc(false) }}><I.Table /><I.ChevDown /></Btn></div>
       {showTable && (<><Overlay onClose={() => setShowTable(false)} /><TableMenu editor={editor} onClose={() => setShowTable(false)} pos={tablePos} /></>)}
       <Sep />
-      <div ref={tocRef}>
-        <Btn title="Table of Contents" active={showToc || showOutline} onClick={() => { setTocPos(getPos(tocRef)); setShowToc(v => !v); setShowTable(false); setShowFont(false) }}>
-          <I.ToC /><I.ChevDown />
-        </Btn>
-      </div>
+      <div ref={tocRef}><Btn title="Table of Contents" active={showToc || showOutline} onClick={() => { setTocPos(getPos(tocRef)); setShowToc(v => !v); setShowTable(false); setShowFont(false) }}><I.ToC /><I.ChevDown /></Btn></div>
       {showToc && (<><Overlay onClose={() => setShowToc(false)} /><TocMenu pos={tocPos} onClose={() => setShowToc(false)} showOutline={showOutline} onToggleOutline={onToggleOutline} onInsertToc={onInsertToc} /></>)}
+    </div>
+  )
+}
+
+// ── Comment input with @mention ───────────────────────────────────────────────
+
+function CommentInput({ value, onChange, placeholder, members, style, autoFocus }: {
+  value: string; onChange: (v: string) => void; placeholder: string
+  members: Member[]; style?: React.CSSProperties; autoFocus?: boolean
+}) {
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null)
+  const [mentionPos, setMentionPos] = useState({ top: 0, left: 0 })
+  const ref = useRef<HTMLTextAreaElement>(null)
+  const filtered = mentionQuery !== null ? members.filter(m => m.name.toLowerCase().includes(mentionQuery.toLowerCase())).slice(0, 5) : []
+  function handleChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
+    onChange(e.target.value)
+    const textBefore = e.target.value.slice(0, e.target.selectionStart)
+    const match = textBefore.match(/@(\w*)$/)
+    if (match) { setMentionQuery(match[1]); if (ref.current) { const r = ref.current.getBoundingClientRect(); setMentionPos({ top: r.bottom + 4, left: r.left }) } }
+    else setMentionQuery(null)
+  }
+  function insertMention(name: string) {
+    const cursor = ref.current?.selectionStart || 0
+    const newText = value.slice(0, cursor).replace(/@\w*$/, `@${name} `) + value.slice(cursor)
+    onChange(newText); setMentionQuery(null); setTimeout(() => ref.current?.focus(), 0)
+  }
+  return (
+    <div style={{ position: 'relative' }}>
+      <textarea ref={ref} value={value} onChange={handleChange} placeholder={placeholder} autoFocus={autoFocus}
+        style={{ width: '100%', padding: '8px 10px', fontSize: 12, border: '0.5px solid rgba(0,0,0,0.18)', borderRadius: 6, outline: 'none', resize: 'none', fontFamily: 'inherit', boxSizing: 'border-box', ...style }} />
+      {mentionQuery !== null && filtered.length > 0 && (
+        <div style={{ position: 'fixed', top: mentionPos.top, left: mentionPos.left, zIndex: 9999, background: '#fff', border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.12)', minWidth: 180, overflow: 'hidden' }}>
+          {filtered.map(m => (
+            <button key={m.user_id} onMouseDown={e => { e.preventDefault(); insertMention(m.name) }}
+              style={{ display: 'block', width: '100%', textAlign: 'left', padding: '7px 12px', fontSize: 12, border: 'none', background: 'transparent', cursor: 'pointer', color: '#1a1f24' }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(78,140,140,0.08)' }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+            ><span style={{ fontWeight: 500 }}>{m.name}</span><span style={{ fontSize: 10, color: '#8a96a2', marginLeft: 6 }}>{m.user_role}</span></button>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
 
 // ── Comments panel ────────────────────────────────────────────────────────────
 
-function CommentsPanel({ comments, commentsLoading, newComment, setNewComment, replyTo, setReplyTo, postingComment, postComment, resolveComment, onClose }: {
-  comments: Comment[]; commentsLoading: boolean; newComment: string; setNewComment: (v: string) => void
-  replyTo: string | null; setReplyTo: (v: string | null) => void; postingComment: boolean
-  postComment: (parentId?: string) => void; resolveComment: (id: string, resolved: boolean) => void; onClose: () => void
+function CommentsPanel({ comments, commentsLoading, members, newComment, setNewComment, replyTo, setReplyTo,
+  postingComment, postComment, resolveComment, onClose, activeCommentId, setActiveCommentId }: {
+  comments: Comment[]; commentsLoading: boolean; members: Member[]
+  newComment: string; setNewComment: (v: string) => void
+  replyTo: string | null; setReplyTo: (v: string | null) => void
+  postingComment: boolean
+  postComment: (parentId?: string) => void
+  resolveComment: (id: string, resolved: boolean) => void
+  onClose: () => void
+  activeCommentId: string | null
+  setActiveCommentId: (id: string | null) => void
 }) {
-  const unresolvedCount = comments.filter(c => !c.resolved).length
+  const [filter, setFilter] = useState<CommentFilter>('open')
+  const activeRef = useRef<HTMLDivElement>(null)
+
   const topLevel = comments.filter(c => !c.parent_id)
+  const filtered = topLevel.filter(c => filter === 'open' ? !c.resolved : c.resolved)
+  const openCount = topLevel.filter(c => !c.resolved).length
+  const resolvedCount = topLevel.filter(c => c.resolved).length
+
+  // Auto-scroll to active comment
+  useEffect(() => {
+    if (activeCommentId && activeRef.current) {
+      activeRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    }
+  }, [activeCommentId])
+
+  // Switch to correct tab when activeCommentId changes
+  useEffect(() => {
+    if (activeCommentId) {
+      const c = comments.find(c => c.id === activeCommentId)
+      if (c) setFilter(c.resolved ? 'resolved' : 'open')
+    }
+  }, [activeCommentId])
+
+  function avatar(name: string, warning: boolean) {
+    return (
+      <div style={{ width: 24, height: 24, borderRadius: '50%', background: warning ? 'rgba(148,48,48,0.12)' : 'rgba(78,140,140,0.15)', color: warning ? '#943030' : '#2e5f5f', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700, flexShrink: 0 }}>
+        {name.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2)}
+      </div>
+    )
+  }
 
   return (
     <div style={{ width: 300, flexShrink: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', borderLeft: '1px solid #d8d4ce', background: '#faf9f7' }}>
-      {/* Header */}
       <div style={{ padding: '10px 14px', borderBottom: '1px solid #e0ddd8', background: '#f5f2ee', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <span style={{ fontSize: 11, fontWeight: 600, color: '#5a6472', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-          Comments {unresolvedCount > 0 && `(${unresolvedCount})`}
-        </span>
+        <span style={{ fontSize: 11, fontWeight: 600, color: '#5a6472', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Comments</span>
         <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#8a96a2', fontSize: 18, lineHeight: 1 }}>×</button>
       </div>
 
-      {/* List */}
+      {/* Filter tabs */}
+      <div style={{ display: 'flex', borderBottom: '1px solid #e0ddd8', background: '#fff' }}>
+        {(['open', 'resolved'] as CommentFilter[]).map(f => (
+          <button key={f} onClick={() => setFilter(f)}
+            style={{ flex: 1, height: 34, fontSize: 11, border: 'none', background: 'none', cursor: 'pointer', borderBottom: filter === f ? '2px solid #4e8c8c' : '2px solid transparent', color: filter === f ? '#2e5f5f' : '#8a96a2', fontWeight: filter === f ? 600 : 400 }}>
+            {f === 'open' ? `Open (${openCount})` : `Resolved (${resolvedCount})`}
+          </button>
+        ))}
+      </div>
+
+      {/* Comment list */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
         {commentsLoading ? (
           <div style={{ padding: 20, textAlign: 'center', fontSize: 12, color: '#8a96a2' }}>Loading…</div>
-        ) : topLevel.length === 0 ? (
+        ) : filtered.length === 0 ? (
           <div style={{ padding: '24px 14px', textAlign: 'center', fontSize: 12, color: '#8a96a2', lineHeight: 1.6 }}>
-            No comments yet.<br />Be the first to add one.
+            {filter === 'open' ? 'No open comments.\nSelect text in the document to add one.' : 'No resolved comments.'}
           </div>
-        ) : topLevel.map(c => {
+        ) : filtered.map(c => {
           const replies = comments.filter(r => r.parent_id === c.id)
           const isWarning = c.content.startsWith('⚠')
+          const isActive = activeCommentId === c.id
           return (
-            <div key={c.id} style={{ padding: '10px 14px', borderBottom: '0.5px solid rgba(0,0,0,0.06)', opacity: c.resolved ? 0.55 : 1 }}>
-              {/* Author row */}
+            <div key={c.id} ref={isActive ? activeRef : null}
+              onClick={() => setActiveCommentId(isActive ? null : c.id)}
+              style={{ padding: '10px 14px', borderBottom: '0.5px solid rgba(0,0,0,0.06)', opacity: c.resolved ? 0.65 : 1, background: isActive ? 'rgba(78,140,140,0.06)' : 'transparent', borderLeft: isActive ? '3px solid #4e8c8c' : '3px solid transparent', cursor: 'pointer', transition: 'background 0.1s' }}>
+              {/* Anchor text */}
+              {c.anchor_text && (
+                <div style={{ fontSize: 10, fontStyle: 'italic', color: '#5a6472', background: '#f5f2ee', padding: '3px 8px', borderRadius: 3, borderLeft: '2px solid #4e8c8c', marginBottom: 7, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  "{c.anchor_text.slice(0, 60)}{c.anchor_text.length > 60 ? '…' : ''}"
+                </div>
+              )}
+              {/* Author */}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                  <div style={{ width: 24, height: 24, borderRadius: '50%', background: isWarning ? 'rgba(148,48,48,0.12)' : 'rgba(78,140,140,0.15)', color: isWarning ? '#943030' : '#2e5f5f', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700, flexShrink: 0 }}>
-                    {c.author_name?.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2)}
-                  </div>
+                  {avatar(c.author_name, isWarning)}
                   <div>
                     <div style={{ fontSize: 11, fontWeight: 600, color: '#1a1f24' }}>{c.author_name}</div>
                     <div style={{ fontSize: 10, color: '#8a96a2' }}>{new Date(c.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</div>
                   </div>
                 </div>
-                <button onClick={() => resolveComment(c.id, !c.resolved)} title={c.resolved ? 'Unresolve' : 'Resolve'}
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: c.resolved ? '#3a7a5a' : '#8a96a2', fontSize: 16, lineHeight: 1, flexShrink: 0 }}>
-                  {c.resolved ? '✓' : '○'}
+                <button onClick={e => { e.stopPropagation(); resolveComment(c.id, !c.resolved) }}
+                  style={{ background: c.resolved ? 'rgba(58,122,90,0.1)' : 'transparent', border: c.resolved ? '0.5px solid rgba(58,122,90,0.3)' : '0.5px solid rgba(0,0,0,0.15)', borderRadius: 5, cursor: 'pointer', color: c.resolved ? '#3a7a5a' : '#8a96a2', fontSize: 11, padding: '3px 8px', fontWeight: 500 }}>
+                  {c.resolved ? '✓ Resolved' : 'Resolve'}
                 </button>
               </div>
               {/* Body */}
@@ -365,7 +420,7 @@ function CommentsPanel({ comments, commentsLoading, newComment, setNewComment, r
                 <div key={r.id} style={{ marginTop: 8, paddingLeft: 14, borderLeft: '2px solid #e0ddd8' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 2 }}>
                     <div style={{ width: 18, height: 18, borderRadius: '50%', background: 'rgba(78,140,140,0.1)', color: '#2e5f5f', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 8, fontWeight: 700 }}>
-                      {r.author_name?.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2)}
+                      {r.author_name.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2)}
                     </div>
                     <span style={{ fontSize: 10, fontWeight: 600, color: '#5a6472' }}>{r.author_name}</span>
                     <span style={{ fontSize: 10, color: '#8a96a2' }}>{new Date(r.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span>
@@ -375,15 +430,14 @@ function CommentsPanel({ comments, commentsLoading, newComment, setNewComment, r
               ))}
               {/* Reply */}
               {!c.resolved && (
-                <button onClick={() => setReplyTo(replyTo === c.id ? null : c.id)}
+                <button onClick={e => { e.stopPropagation(); setReplyTo(replyTo === c.id ? null : c.id) }}
                   style={{ marginTop: 7, background: 'none', border: 'none', fontSize: 11, color: '#4e8c8c', cursor: 'pointer', padding: 0 }}>
                   {replyTo === c.id ? 'Cancel reply' : '↩ Reply'}
                 </button>
               )}
               {replyTo === c.id && (
-                <div style={{ marginTop: 8 }}>
-                  <textarea value={newComment} onChange={e => setNewComment(e.target.value)} placeholder="Write a reply…" autoFocus
-                    style={{ width: '100%', height: 56, padding: '6px 8px', fontSize: 11, border: '0.5px solid rgba(0,0,0,0.18)', borderRadius: 6, outline: 'none', resize: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }} />
+                <div style={{ marginTop: 8 }} onClick={e => e.stopPropagation()}>
+                  <CommentInput value={newComment} onChange={setNewComment} members={members} placeholder="Write a reply… use @ to mention" style={{ height: 56 }} autoFocus />
                   <button onClick={() => postComment(c.id)} disabled={postingComment || !newComment.trim()}
                     style={{ marginTop: 4, height: 26, padding: '0 12px', fontSize: 11, background: '#4e8c8c', border: 'none', borderRadius: 5, color: '#fff', cursor: 'pointer', opacity: postingComment || !newComment.trim() ? 0.6 : 1 }}>
                     {postingComment ? 'Posting…' : 'Reply'}
@@ -396,19 +450,18 @@ function CommentsPanel({ comments, commentsLoading, newComment, setNewComment, r
       </div>
 
       {/* New comment */}
-      <div style={{ padding: '10px 14px', borderTop: '1px solid #e0ddd8', background: '#fff' }}>
-        <textarea
-          value={replyTo ? '' : newComment}
-          onChange={e => { if (!replyTo) setNewComment(e.target.value) }}
-          placeholder={replyTo ? 'Replying above…' : 'Add a comment…'}
-          disabled={!!replyTo}
-          style={{ width: '100%', height: 64, padding: '8px 10px', fontSize: 12, border: '0.5px solid rgba(0,0,0,0.18)', borderRadius: 6, outline: 'none', resize: 'none', fontFamily: 'inherit', boxSizing: 'border-box', opacity: replyTo ? 0.5 : 1 }}
-        />
-        <button onClick={() => postComment()} disabled={postingComment || !newComment.trim() || !!replyTo}
-          style={{ marginTop: 6, width: '100%', height: 30, fontSize: 12, background: '#4e8c8c', border: 'none', borderRadius: 6, color: '#fff', cursor: 'pointer', opacity: postingComment || !newComment.trim() || !!replyTo ? 0.6 : 1, fontWeight: 500 }}>
-          {postingComment ? 'Posting…' : 'Post comment'}
-        </button>
-      </div>
+      {filter === 'open' && !replyTo && (
+        <div style={{ padding: '10px 14px', borderTop: '1px solid #e0ddd8', background: '#fff' }}>
+          <div style={{ fontSize: 11, color: '#8a96a2', marginBottom: 6 }}>
+            Select text in the document to attach a comment to it
+          </div>
+          <CommentInput value={newComment} onChange={setNewComment} placeholder="Add a comment… use @ to mention" members={members} style={{ height: 64 }} />
+          <button onClick={() => postComment()} disabled={postingComment || !newComment.trim()}
+            style={{ marginTop: 6, width: '100%', height: 30, fontSize: 12, background: '#4e8c8c', border: 'none', borderRadius: 6, color: '#fff', cursor: 'pointer', opacity: postingComment || !newComment.trim() ? 0.6 : 1, fontWeight: 500 }}>
+            {postingComment ? 'Posting…' : 'Post comment'}
+          </button>
+        </div>
+      )}
     </div>
   )
 }
@@ -437,6 +490,24 @@ function buildEditorStyles(sizes: typeof DEFAULT_SIZES) {
     .ProseMirror mark { background: #fff3b0; border-radius: 2px; padding: 1px 2px; }
     .ProseMirror .selectedCell { background: rgba(78,140,140,0.1) !important; }
     .ProseMirror p.is-editor-empty:first-child::before { content: attr(data-placeholder); float: left; color: #8a96a2; pointer-events: none; height: 0; font-style: italic; }
+    /* Comment anchors */
+    .comment-anchor {
+      background: rgba(255, 220, 80, 0.3);
+      border-bottom: 2px solid rgba(200, 160, 0, 0.6);
+      border-radius: 2px;
+      transition: background 0.15s;
+    }
+    .comment-anchor:hover {
+      background: rgba(255, 220, 80, 0.55);
+    }
+    .comment-anchor--resolved {
+      background: transparent;
+      border-bottom: 2px solid rgba(90,100,114,0.25);
+    }
+    .comment-anchor--active {
+      background: rgba(255, 200, 50, 0.5) !important;
+      border-bottom-color: rgba(200, 140, 0, 0.8) !important;
+    }
     .toc-block { background: #f5f2ee; border: 1px solid #e0ddd8; border-radius: 6px; padding: 16px 20px; margin: 16px 0; }
     .toc-block h4 { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: #8a96a2; margin: 0 0 10px; border: none; }
     .toc-block ol { margin: 0; padding-left: 18px; }
@@ -446,25 +517,20 @@ function buildEditorStyles(sizes: typeof DEFAULT_SIZES) {
   `
 }
 
-// ── Extensions ────────────────────────────────────────────────────────────────
-
 function makeExtensions(placeholder: string, onTocUpdate: (items: any[]) => void) {
   return [
-    StarterKit, TextStyle, FontFamily, Underline,
+    StarterKit, TextStyle, FontFamily, Underline, CommentMark,
     Highlight.configure({ multicolor: false }),
     TextAlign.configure({ types: ['heading', 'paragraph'] }),
     Table.configure({ resizable: true }),
     TableRow, TableHeader, TableCell,
     Placeholder.configure({ placeholder }),
     CharacterCount,
-    TableOfContents.configure({
-      getIndex: getHierarchicalIndexes,
-      onUpdate: (content: any) => onTocUpdate(content),
-    }),
+    TableOfContents.configure({ getIndex: getHierarchicalIndexes, onUpdate: (c: any) => onTocUpdate(c) }),
   ]
 }
 
-// ── Main component ────────────────────────────────────────────────────────────
+// ── Main ──────────────────────────────────────────────────────────────────────
 
 export default function DocumentEditorPage() {
   const params = useParams()
@@ -488,6 +554,7 @@ export default function DocumentEditorPage() {
   const [wordCount, setWordCount] = useState(0)
   const [sizes, setSizes] = useState(DEFAULT_SIZES)
   const [tocItems, setTocItems] = useState<TocItem[]>([])
+  const [members, setMembers] = useState<Member[]>([])
 
   // Comments state
   const [comments, setComments] = useState<Comment[]>([])
@@ -495,20 +562,31 @@ export default function DocumentEditorPage() {
   const [newComment, setNewComment] = useState('')
   const [replyTo, setReplyTo] = useState<string | null>(null)
   const [postingComment, setPostingComment] = useState(false)
+  const [activeCommentId, setActiveCommentId] = useState<string | null>(null)
 
-  // Request changes state
+
+  // Assigned examples for this record
+  const [assignedExamples, setAssignedExamples] = useState<any[]>([])
+  const [availableExamples, setAvailableExamples] = useState<any[]>([])
+  const [activeExampleIdx, setActiveExampleIdx] = useState(0)
+  const [showManageExamples, setShowManageExamples] = useState(false)
+  const [loadingExamples, setLoadingExamples] = useState(false)
+
+  // Floating bubble for selection
+  const [bubble, setBubble] = useState<{ x: number; y: number; text: string; from: number; to: number } | null>(null)
+
+  // Approval
   const [showRequestChanges, setShowRequestChanges] = useState(false)
   const [changeReason, setChangeReason] = useState('')
+  const [approvingDoc, setApprovingDoc] = useState(false)
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const latestContent = useRef<any>(null)
 
-  // ── Load session ────────────────────────────────────────────────────────────
   useEffect(() => {
     fetch('/api/auth/session').then(r => r.ok ? r.json() : null).then(d => { if (d?.user) setUserRole(d.user.role) })
   }, [])
 
-  // ── Load document ───────────────────────────────────────────────────────────
   useEffect(() => {
     fetch(`/api/projects/${projectId}/documents/${docId}`)
       .then(r => r.ok ? r.json() : Promise.reject())
@@ -516,33 +594,115 @@ export default function DocumentEditorPage() {
         setDoc(data); setDocStatus(data.status)
         const ex = data.example_content
         setHasExample(!!(ex && typeof ex === 'object' && Object.keys(ex).length > 0))
+        // will be updated when examples load
         setLoading(false)
+        loadExamples()
       })
       .catch(() => router.push(`/dashboard/projects/${projectId}`))
   }, [projectId, docId])
 
-  // ── Load comments ───────────────────────────────────────────────────────────
   useEffect(() => {
-    if (showComments) loadComments()
-  }, [showComments])
+    fetch(`/api/projects/${projectId}/members`).then(r => r.ok ? r.json() : []).then(setMembers)
+  }, [projectId])
+
+  useEffect(() => { if (showComments) loadComments() }, [showComments])
 
   async function loadComments() {
     setCommentsLoading(true)
     try {
       const res = await fetch(`/api/projects/${projectId}/documents/${docId}/comments`)
-      if (res.ok) setComments(await res.json())
+      if (res.ok) {
+        const data = await res.json()
+        setComments(data)
+        // Update resolved state on comment marks in editor
+        if (editor) updateCommentMarkStates(data)
+      }
     } finally { setCommentsLoading(false) }
+  }
+
+  function updateCommentMarkStates(commentList: Comment[]) {
+    if (!editor) return
+    const resolvedIds = new Set(commentList.filter(c => c.resolved).map(c => c.anchor_id).filter(Boolean))
+    // Walk doc and update resolved attr on commentMark nodes
+    const { doc: prosemirrorDoc, tr } = editor.state
+    let changed = false
+    prosemirrorDoc.descendants((node, pos) => {
+      node.marks.forEach(mark => {
+        if (mark.type.name === 'commentMark') {
+          const shouldBeResolved = resolvedIds.has(mark.attrs.commentId)
+          if (mark.attrs.resolved !== shouldBeResolved) {
+            tr.addMark(pos, pos + node.nodeSize, mark.type.create({ ...mark.attrs, resolved: shouldBeResolved }))
+            changed = true
+          }
+        }
+      })
+    })
+    if (changed) editor.view.dispatch(tr)
+  }
+
+
+  async function loadExamples() {
+    setLoadingExamples(true)
+    try {
+      const res = await fetch(`/api/projects/${projectId}/documents/${docId}/examples`)
+      if (res.ok) {
+        const data = await res.json()
+        setAssignedExamples(data.assigned || [])
+        setAvailableExamples(data.available || [])
+        setActiveExampleIdx(0)
+      }
+    } finally { setLoadingExamples(false) }
+  }
+
+  async function addExample(templateExampleId: string) {
+    await fetch(`/api/projects/${projectId}/documents/${docId}/examples`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ template_example_id: templateExampleId }),
+    })
+    loadExamples()
+  }
+
+  async function removeExample(templateExampleId: string) {
+    await fetch(`/api/projects/${projectId}/documents/${docId}/examples?template_example_id=${templateExampleId}`, {
+      method: 'DELETE',
+    })
+    loadExamples()
   }
 
   async function postComment(parentId?: string) {
     if (!newComment.trim()) return
     setPostingComment(true)
+
+    let anchorId: string | null = null
+    let anchorText: string | null = null
+
+    // If there's a pending selection in the editor, wrap it in a CommentMark
+    if (!parentId && bubble && editor) {
+      anchorId = `c_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
+      anchorText = bubble.text
+      editor.chain().focus()
+        .setTextSelection({ from: bubble.from, to: bubble.to })
+        .setMark('commentMark', { commentId: anchorId, resolved: false })
+        .run()
+      setBubble(null)
+      // Save the content with the new mark
+      const content = editor.getJSON()
+      latestContent.current = content
+      if (saveTimer.current) clearTimeout(saveTimer.current)
+      saveTimer.current = setTimeout(() => save(content), 500)
+    }
+
     try {
       const res = await fetch(`/api/projects/${projectId}/documents/${docId}/comments`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: newComment, parent_id: parentId || null }),
+        body: JSON.stringify({ content: newComment, parent_id: parentId || null, anchor_text: anchorText, anchor_id: anchorId }),
       })
-      if (res.ok) { setNewComment(''); setReplyTo(null); loadComments() }
+      if (res.ok) {
+        const newC = await res.json()
+        setNewComment(''); setReplyTo(null)
+        setActiveCommentId(newC.id)
+        loadComments()
+      }
     } finally { setPostingComment(false) }
   }
 
@@ -554,7 +714,6 @@ export default function DocumentEditorPage() {
     loadComments()
   }
 
-  // ── Save ────────────────────────────────────────────────────────────────────
   const save = useCallback(async (content: any) => {
     setSaveState('saving')
     try {
@@ -575,20 +734,18 @@ export default function DocumentEditorPage() {
     })
   }
 
-  // ── Approval actions ────────────────────────────────────────────────────────
   async function submitForReview() {
     setSubmitting(true)
     if (latestContent.current) { if (saveTimer.current) clearTimeout(saveTimer.current); await save(latestContent.current) }
-    await updateStatus('review')
-    setSubmitting(false)
+    await updateStatus('review'); setSubmitting(false)
   }
 
   async function approveDoc() {
-    setApproving(true)
+    setApprovingDoc(true)
     try {
       const res = await fetch(`/api/projects/${projectId}/documents/${docId}/approve`, { method: 'POST' })
-      if (res.ok) { setDocStatus('approved'); loadComments() }
-    } finally { setApproving(false) }
+      if (res.ok) { setDocStatus('approved'); if (showComments) loadComments() }
+    } finally { setApprovingDoc(false) }
   }
 
   async function requestChanges() {
@@ -597,15 +754,11 @@ export default function DocumentEditorPage() {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ reason: changeReason }),
     })
-    if (res.ok) {
-      setDocStatus('inprogress'); setChangeReason(''); setShowRequestChanges(false)
-      if (showComments) loadComments()
-      else setShowComments(true)
-    }
+    if (res.ok) { setDocStatus('inprogress'); setChangeReason(''); setShowRequestChanges(false); setShowComments(true); loadComments() }
   }
 
   async function reviseDoc() {
-    if (!confirm('Create a new revision? The approved version will be preserved and a new draft created.')) return
+    if (!confirm('Create a new revision? The approved version will be preserved.')) return
     setRevising(true)
     try {
       const res = await fetch(`/api/projects/${projectId}/documents/${docId}/revise`, { method: 'POST' })
@@ -613,7 +766,6 @@ export default function DocumentEditorPage() {
     } finally { setRevising(false) }
   }
 
-  // ── Export ──────────────────────────────────────────────────────────────────
   async function exportDoc() {
     setExporting(true)
     try {
@@ -621,16 +773,13 @@ export default function DocumentEditorPage() {
       if (!res.ok) throw new Error('Export failed')
       const blob = await res.blob()
       const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
+      const a = document.createElement('a'); a.href = url
       a.download = res.headers.get('Content-Disposition')?.match(/filename="(.+)"/)?.[1] || 'document.docx'
-      a.click()
-      URL.revokeObjectURL(url)
+      a.click(); URL.revokeObjectURL(url)
     } catch (e: any) { alert('Export failed: ' + e.message) }
     finally { setExporting(false) }
   }
 
-  // ── Insert ToC ──────────────────────────────────────────────────────────────
   function insertToc() {
     if (!editor || tocItems.length === 0) return
     const lines = tocItems.map(item => {
@@ -640,11 +789,31 @@ export default function DocumentEditorPage() {
     editor.chain().focus().insertContent(`<div class="toc-block"><h4>Table of Contents</h4><ol>${lines}</ol></div>`).run()
   }
 
-  // ── Editors ─────────────────────────────────────────────────────────────────
   const editor = useEditor({
     extensions: makeExtensions('Start writing…', setTocItems),
     content: '',
-    editorProps: { attributes: { style: 'outline: none;' } },
+    editorProps: {
+      attributes: { style: 'outline: none;' },
+      handleClick(view, pos, event) {
+        // Check if click is on a comment anchor
+        const target = event.target as HTMLElement
+        const anchor = target.closest('[data-comment-id]') as HTMLElement | null
+        if (anchor) {
+          const commentId = anchor.getAttribute('data-comment-id')
+          if (commentId) {
+            // Find the comment with this anchor_id
+            setShowComments(true)
+            // Set active after comments load
+            setTimeout(() => {
+              const c = comments.find(c => c.anchor_id === commentId)
+              if (c) setActiveCommentId(c.id)
+            }, 100)
+            return true
+          }
+        }
+        return false
+      },
+    },
     onUpdate: ({ editor }) => {
       const content = editor.getJSON()
       latestContent.current = content
@@ -652,6 +821,19 @@ export default function DocumentEditorPage() {
       setWordCount(editor.storage.characterCount?.words() ?? 0)
       if (saveTimer.current) clearTimeout(saveTimer.current)
       saveTimer.current = setTimeout(() => save(content), 2000)
+    },
+    onSelectionUpdate: ({ editor }) => {
+      const { from, to } = editor.state.selection
+      if (from === to) { setBubble(null); return }
+      const selectedText = editor.state.doc.textBetween(from, to, ' ').trim()
+      if (!selectedText || selectedText.length < 3) { setBubble(null); return }
+      // Check selection doesn't already have a comment mark
+      const hasExistingMark = editor.isActive('commentMark')
+      if (hasExistingMark) { setBubble(null); return }
+      try {
+        const coords = editor.view.coordsAtPos(to)
+        setBubble({ x: coords.left, y: coords.top - 44, text: selectedText, from, to })
+      } catch { setBubble(null) }
     },
   })
 
@@ -663,6 +845,19 @@ export default function DocumentEditorPage() {
     }
   }, [editor, doc])
 
+  // Update active comment highlight in document
+  useEffect(() => {
+    if (!editor) return
+    // Remove active class from all, add to active
+    document.querySelectorAll('.comment-anchor--active').forEach(el => el.classList.remove('comment-anchor--active'))
+    if (activeCommentId) {
+      const activeComment = comments.find(c => c.id === activeCommentId)
+      if (activeComment?.anchor_id) {
+        document.querySelectorAll(`[data-comment-id="${activeComment.anchor_id}"]`).forEach(el => el.classList.add('comment-anchor--active'))
+      }
+    }
+  }, [activeCommentId, comments, editor])
+
   const refEditor = useEditor({
     extensions: makeExtensions('', () => {}),
     content: '', editable: false,
@@ -670,18 +865,27 @@ export default function DocumentEditorPage() {
   })
 
   useEffect(() => {
-    if (!refEditor || !doc) return
+    if (!refEditor) return
+    // Prefer assigned examples, fall back to legacy example_content
+    if (assignedExamples.length > 0 && assignedExamples[activeExampleIdx]) {
+      const ex = assignedExamples[activeExampleIdx].content
+      if (ex && typeof ex === 'object' && Object.keys(ex).length > 0) {
+        refEditor.commands.setContent(ex)
+        return
+      }
+    }
+    if (!doc) return
     const ex = doc.example_content
     if (ex && typeof ex === 'object' && Object.keys(ex).length > 0) refEditor.commands.setContent(ex)
-  }, [refEditor, doc])
+  }, [refEditor, doc, assignedExamples, activeExampleIdx])
 
-  // ── Keyboard shortcuts ──────────────────────────────────────────────────────
   useEffect(() => {
     function handler(e: KeyboardEvent) {
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
         e.preventDefault()
         if (latestContent.current) { if (saveTimer.current) clearTimeout(saveTimer.current); save(latestContent.current) }
       }
+      if (e.key === 'Escape') setBubble(null)
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
@@ -699,15 +903,32 @@ export default function DocumentEditorPage() {
   const isAdmin = userRole === 'admin'
   const isConsultant = userRole === 'consultant'
   const backHref = isClient ? `/dashboard/client/projects/${projectId}` : `/dashboard/projects/${projectId}`
-  const unresolvedComments = comments.filter(c => !c.resolved).length
+  const openComments = comments.filter(c => !c.resolved && !c.parent_id).length
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 60px)', background: '#f5f2ee' }}>
       <style>{buildEditorStyles(sizes)}</style>
 
-      {/* ── Top bar ── */}
+      {/* Floating comment bubble */}
+      {bubble && (
+        <div style={{ position: 'fixed', left: bubble.x, top: bubble.y, zIndex: 500, display: 'flex', alignItems: 'center', gap: 6, background: '#1a1f24', borderRadius: 20, padding: '5px 12px', boxShadow: '0 2px 12px rgba(0,0,0,0.25)', pointerEvents: 'auto' }}>
+          <button
+            onMouseDown={e => {
+              e.preventDefault()
+              setShowComments(true)
+              // Keep bubble open so postComment can use it
+            }}
+            style={{ background: 'none', border: 'none', color: '#fff', fontSize: 11, fontWeight: 500, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, padding: 0 }}
+          >
+            <I.Comment /> Add comment
+          </button>
+          <button onMouseDown={e => { e.preventDefault(); setBubble(null) }}
+            style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.5)', fontSize: 14, cursor: 'pointer', padding: 0, lineHeight: 1 }}>×</button>
+        </div>
+      )}
+
+      {/* Top bar */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 16px', height: 48, flexShrink: 0, borderBottom: '1px solid #e0ddd8', background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
-        {/* Breadcrumb */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#8a96a2', minWidth: 0 }}>
           <Link href={isClient ? '/dashboard/client' : '/dashboard/projects'} style={{ color: '#8a96a2', textDecoration: 'none' }}>{isClient ? 'My Projects' : 'Projects'}</Link>
           <span>›</span>
@@ -715,26 +936,16 @@ export default function DocumentEditorPage() {
           <span>›</span>
           <span style={{ color: '#1a1f24', fontWeight: 500, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>{doc.name}{doc.revision && doc.revision > 1 ? ` (rev.${doc.revision})` : ''}</span>
         </div>
-
-        {/* Controls */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
           <span style={{ fontSize: 11, color: saveState === 'saved' ? '#3a7a5a' : saveState === 'saving' ? '#8a6020' : saveState === 'error' ? '#943030' : '#8a96a2' }}>
             {saveState === 'saved' ? '✓ Saved' : saveState === 'saving' ? 'Saving…' : saveState === 'error' ? '⚠ Error' : '● Unsaved'}
           </span>
-
           <span style={{ fontSize: 11, padding: '3px 10px', borderRadius: 20, background: st.bg, color: st.color, border: `0.5px solid ${st.border}`, fontWeight: 500 }}>{st.label}</span>
-
-          {/* Admin/consultant status dropdown */}
           {(isAdmin || isConsultant) && (
             <select value={docStatus} onChange={e => updateStatus(e.target.value)} style={{ height: 28, padding: '0 8px', fontSize: 12, border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 6, background: '#fff', color: '#2e3640', cursor: 'pointer' }}>
-              <option value="draft">Draft</option>
-              <option value="inprogress">In progress</option>
-              <option value="review">In review</option>
-              <option value="approved">Approved</option>
+              <option value="draft">Draft</option><option value="inprogress">In progress</option><option value="review">In review</option><option value="approved">Approved</option>
             </select>
           )}
-
-          {/* Client: submit */}
           {isClient && !isApproved && !isReview && (
             <button onClick={submitForReview} disabled={submitting} style={{ height: 28, padding: '0 12px', fontSize: 12, cursor: 'pointer', background: '#4e8c8c', border: 'none', borderRadius: 6, color: '#fff', opacity: submitting ? 0.7 : 1, fontWeight: 500 }}>
               {submitting ? 'Submitting…' : 'Submit for review'}
@@ -742,45 +953,28 @@ export default function DocumentEditorPage() {
           )}
           {isClient && isReview && <span style={{ fontSize: 12, color: '#8a6020', fontWeight: 500 }}>⏳ Awaiting review</span>}
           {isClient && isApproved && <span style={{ fontSize: 12, color: '#3a7a5a', fontWeight: 500 }}>✓ Approved</span>}
-
-          {/* Consultant/admin: approve or request changes */}
           {(isAdmin || isConsultant) && isReview && (
             <>
-              <button onClick={approveDoc} disabled={approving} style={{ height: 28, padding: '0 12px', fontSize: 12, cursor: 'pointer', background: '#3a7a5a', border: 'none', borderRadius: 6, color: '#fff', fontWeight: 500, opacity: approving ? 0.7 : 1 }}>
-                {approving ? 'Approving…' : '✓ Approve'}
-              </button>
-              <button onClick={() => setShowRequestChanges(v => !v)} style={{ height: 28, padding: '0 12px', fontSize: 12, cursor: 'pointer', background: showRequestChanges ? 'rgba(148,48,48,0.1)' : 'transparent', border: '0.5px solid rgba(148,48,48,0.35)', borderRadius: 6, color: '#943030', fontWeight: 500 }}>
-                Request changes
-              </button>
+              <button onClick={approveDoc} disabled={approvingDoc} style={{ height: 28, padding: '0 12px', fontSize: 12, cursor: 'pointer', background: '#3a7a5a', border: 'none', borderRadius: 6, color: '#fff', fontWeight: 500, opacity: approvingDoc ? 0.7 : 1 }}>{approvingDoc ? 'Approving…' : '✓ Approve'}</button>
+              <button onClick={() => setShowRequestChanges(v => !v)} style={{ height: 28, padding: '0 12px', fontSize: 12, cursor: 'pointer', background: showRequestChanges ? 'rgba(148,48,48,0.1)' : 'transparent', border: '0.5px solid rgba(148,48,48,0.35)', borderRadius: 6, color: '#943030', fontWeight: 500 }}>Request changes</button>
             </>
           )}
-
-          {/* Admin: new revision from approved */}
           {isAdmin && isApproved && (
-            <button onClick={reviseDoc} disabled={revising} style={{ height: 28, padding: '0 12px', fontSize: 12, cursor: 'pointer', background: 'transparent', border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 6, color: '#5a6472', opacity: revising ? 0.7 : 1 }}>
-              {revising ? 'Creating…' : '↻ New revision'}
-            </button>
+            <button onClick={reviseDoc} disabled={revising} style={{ height: 28, padding: '0 12px', fontSize: 12, cursor: 'pointer', background: 'transparent', border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 6, color: '#5a6472', opacity: revising ? 0.7 : 1 }}>{revising ? 'Creating…' : '↻ New revision'}</button>
           )}
-
-          {/* Comments toggle */}
           <button onClick={() => setShowComments(v => !v)} style={{ height: 28, padding: '0 10px', fontSize: 12, cursor: 'pointer', background: showComments ? 'rgba(200,169,110,0.12)' : 'transparent', border: showComments ? '0.5px solid rgba(200,169,110,0.4)' : '0.5px solid rgba(0,0,0,0.15)', borderRadius: 6, color: showComments ? '#8a6020' : '#5a6472', display: 'flex', alignItems: 'center', gap: 5 }}>
-            <I.Comment />
-            {unresolvedComments > 0 ? `${unresolvedComments}` : 'Comments'}
+            <I.Comment />{openComments > 0 ? openComments : 'Comments'}
           </button>
-
-          {/* Example toggle */}
           <button onClick={() => setShowReference(v => !v)} style={{ height: 28, padding: '0 12px', fontSize: 12, cursor: 'pointer', background: showReference ? 'rgba(78,140,140,0.1)' : 'transparent', border: showReference ? '0.5px solid rgba(78,140,140,0.4)' : '0.5px solid rgba(0,0,0,0.15)', borderRadius: 6, color: showReference ? '#2e5f5f' : '#5a6472', fontWeight: 500 }}>
             {showReference ? 'Hide example' : 'Show example'}
           </button>
-
-          {/* Export */}
           <button onClick={exportDoc} disabled={exporting} style={{ height: 28, padding: '0 10px', fontSize: 12, cursor: exporting ? 'default' : 'pointer', background: 'transparent', border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 6, color: '#5a6472', display: 'flex', alignItems: 'center', gap: 5, opacity: exporting ? 0.6 : 1 }}>
             <I.Download />{exporting ? 'Exporting…' : 'DOCX'}
           </button>
         </div>
       </div>
 
-      {/* ── Meta strip ── */}
+      {/* Meta strip */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '5px 16px', flexShrink: 0, borderBottom: '1px solid #e0ddd8', background: '#fff', fontSize: 11, color: '#8a96a2' }}>
         <span style={{ fontWeight: 500, color: '#5a6472' }}>{doc.annex}</span>
         <span>·</span><span style={{ fontFamily: 'monospace' }}>{doc.code}</span>
@@ -789,20 +983,17 @@ export default function DocumentEditorPage() {
         <span style={{ marginLeft: 'auto' }}>{wordCount} words</span>
       </div>
 
-      {/* ── Approved banner ── */}
       {isClient && isApproved && (
         <div style={{ padding: '8px 16px', flexShrink: 0, background: 'rgba(58,122,90,0.08)', borderBottom: '1px solid rgba(58,122,90,0.2)', fontSize: 12, color: '#3a7a5a' }}>
           ✓ This record has been approved and is read-only.
         </div>
       )}
 
-      {/* ── Request changes panel ── */}
       {showRequestChanges && (
         <div style={{ padding: '12px 16px', flexShrink: 0, background: 'rgba(148,48,48,0.05)', borderBottom: '1px solid rgba(148,48,48,0.15)', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 12, fontWeight: 500, color: '#943030', marginBottom: 6 }}>Reason for requesting changes</div>
-            <textarea value={changeReason} onChange={e => setChangeReason(e.target.value)} placeholder="Explain what needs to be changed…" autoFocus
-              style={{ width: '100%', height: 70, padding: '8px 10px', fontSize: 12, border: '0.5px solid rgba(148,48,48,0.3)', borderRadius: 6, outline: 'none', resize: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }} />
+            <textarea value={changeReason} onChange={e => setChangeReason(e.target.value)} placeholder="Explain what needs to be changed…" autoFocus style={{ width: '100%', height: 70, padding: '8px 10px', fontSize: 12, border: '0.5px solid rgba(148,48,48,0.3)', borderRadius: 6, outline: 'none', resize: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }} />
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingTop: 22 }}>
             <button onClick={requestChanges} disabled={!changeReason.trim()} style={{ height: 28, padding: '0 12px', fontSize: 12, background: '#943030', border: 'none', borderRadius: 6, color: '#fff', cursor: changeReason.trim() ? 'pointer' : 'default', opacity: changeReason.trim() ? 1 : 0.5 }}>Send</button>
@@ -811,14 +1002,12 @@ export default function DocumentEditorPage() {
         </div>
       )}
 
-      {/* ── Split pane ── */}
+      {/* Split pane */}
       <div style={{ flex: 1, overflow: 'hidden', display: 'flex' }}>
-
         {/* Left — editable */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRight: showReference ? '1px solid #d8d4ce' : 'none' }}>
           {!(isClient && isApproved) && (
-            <Toolbar editor={editor} sizes={sizes} onSizeChange={(k, v) => setSizes(p => ({ ...p, [k]: v }))}
-              showOutline={showOutline} onToggleOutline={() => setShowOutline(v => !v)} onInsertToc={insertToc} />
+            <Toolbar editor={editor} sizes={sizes} onSizeChange={(k, v) => setSizes(p => ({ ...p, [k]: v }))} showOutline={showOutline} onToggleOutline={() => setShowOutline(v => !v)} onInsertToc={insertToc} />
           )}
           <div style={{ flex: 1, overflow: 'hidden', display: 'flex' }}>
             {showOutline && <OutlinePanel items={tocItems} onClose={() => setShowOutline(false)} />}
@@ -834,12 +1023,74 @@ export default function DocumentEditorPage() {
         {/* Right — example */}
         {showReference && (
           <div style={{ width: '40%', flexShrink: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#ede9e3', borderRight: showComments ? '1px solid #d8d4ce' : 'none' }}>
-            <div style={{ padding: '8px 16px', flexShrink: 0, borderBottom: '1px solid #d8d4ce', background: '#e8e3dc', fontSize: 11, fontWeight: 600, color: '#5a6472', display: 'flex', alignItems: 'center', gap: 6, textTransform: 'uppercase' as const, letterSpacing: '0.06em' }}>
-              <span>Example</span>
-              {doc.template_name && <span style={{ fontWeight: 400, color: '#8a96a2', textTransform: 'none' as const, letterSpacing: 0 }}>— {doc.template_name}</span>}
+            {/* Example header */}
+            <div style={{ padding: '8px 16px', flexShrink: 0, borderBottom: '1px solid #d8d4ce', background: '#e8e3dc', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: '#5a6472', textTransform: 'uppercase' as const, letterSpacing: '0.06em', flexShrink: 0 }}>Example</div>
+              {/* Example switcher for multiple assigned examples */}
+              {assignedExamples.length > 1 && (
+                <div style={{ display: 'flex', gap: 4, flex: 1, flexWrap: 'wrap' as const }}>
+                  {assignedExamples.map((ex: any, idx: number) => (
+                    <button key={ex.id} onClick={() => setActiveExampleIdx(idx)}
+                      style={{ height: 22, padding: '0 8px', fontSize: 10, borderRadius: 4, border: 'none', cursor: 'pointer', background: activeExampleIdx === idx ? '#4e8c8c' : 'rgba(0,0,0,0.1)', color: activeExampleIdx === idx ? '#fff' : '#5a6472', fontWeight: activeExampleIdx === idx ? 600 : 400 }}>
+                      {ex.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {assignedExamples.length === 1 && (
+                <span style={{ fontSize: 11, color: '#8a96a2' }}>{assignedExamples[0].name}</span>
+              )}
+              {/* Consultant: manage examples button */}
+              {(isAdmin || isConsultant) && (
+                <button onClick={() => setShowManageExamples(v => !v)}
+                  style={{ marginLeft: 'auto', height: 24, padding: '0 8px', fontSize: 10, borderRadius: 4, border: showManageExamples ? '0.5px solid rgba(78,140,140,0.4)' : '0.5px solid rgba(0,0,0,0.2)', background: showManageExamples ? 'rgba(78,140,140,0.1)' : 'transparent', color: showManageExamples ? '#2e5f5f' : '#5a6472', cursor: 'pointer', flexShrink: 0, fontWeight: 500 }}>
+                  Manage examples
+                </button>
+              )}
             </div>
+
+            {/* Manage examples panel */}
+            {showManageExamples && (isAdmin || isConsultant) && (
+              <div style={{ padding: '12px 16px', borderBottom: '1px solid #d8d4ce', background: '#e0dbd3', flexShrink: 0 }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: '#5a6472', marginBottom: 8 }}>Assigned examples (visible to client)</div>
+                {assignedExamples.length === 0 ? (
+                  <div style={{ fontSize: 11, color: '#8a96a2', marginBottom: 8 }}>No examples assigned yet.</div>
+                ) : assignedExamples.map((ex: any) => (
+                  <div key={ex.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                    <div style={{ flex: 1, fontSize: 12, color: '#1a1f24', fontWeight: 500 }}>{ex.name}</div>
+                    {ex.description && <div style={{ fontSize: 11, color: '#8a96a2' }}>{ex.description}</div>}
+                    <button onClick={() => removeExample(ex.template_example_id || ex.id)}
+                      style={{ height: 22, padding: '0 8px', fontSize: 10, background: 'transparent', border: '0.5px solid rgba(148,48,48,0.3)', borderRadius: 4, color: '#943030', cursor: 'pointer' }}>
+                      Remove
+                    </button>
+                  </div>
+                ))}
+                {availableExamples.filter((av: any) => !assignedExamples.find((a: any) => (a.template_example_id || a.id) === av.id)).length > 0 && (
+                  <>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: '#5a6472', marginTop: 10, marginBottom: 6 }}>Available from template</div>
+                    {availableExamples.filter((av: any) => !assignedExamples.find((a: any) => (a.template_example_id || a.id) === av.id)).map((av: any) => (
+                      <div key={av.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 12, color: '#1a1f24', fontWeight: 500 }}>{av.name}</div>
+                          {av.description && <div style={{ fontSize: 10, color: '#8a96a2' }}>{av.description}</div>}
+                        </div>
+                        <button onClick={() => addExample(av.id)}
+                          style={{ height: 22, padding: '0 8px', fontSize: 10, background: '#4e8c8c', border: 'none', borderRadius: 4, color: '#fff', cursor: 'pointer' }}>
+                          + Add
+                        </button>
+                      </div>
+                    ))}
+                  </>
+                )}
+                {availableExamples.length === 0 && !loadingExamples && (
+                  <div style={{ fontSize: 11, color: '#8a96a2', marginTop: 6 }}>No examples in template library yet. Add them in the Template editor.</div>
+                )}
+              </div>
+            )}
+
+            {/* Example content */}
             <div style={{ flex: 1, overflowY: 'auto', padding: '32px 24px' }}>
-              {hasExample ? (
+              {assignedExamples.length > 0 || hasExample ? (
                 <div style={{ maxWidth: 780, margin: '0 auto', background: '#fff', opacity: 0.92, boxShadow: '0 1px 4px rgba(0,0,0,0.06)', borderRadius: 2, padding: '60px 72px', minHeight: 900 }}>
                   <EditorContent editor={refEditor} />
                 </div>
@@ -847,7 +1098,9 @@ export default function DocumentEditorPage() {
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60%', gap: 12, textAlign: 'center' }}>
                   <div style={{ fontSize: 32, opacity: 0.2 }}>📄</div>
                   <div style={{ fontSize: 13, fontWeight: 500, color: '#5a6472' }}>No example available</div>
-                  <div style={{ fontSize: 12, color: '#8a96a2', maxWidth: 240, lineHeight: 1.7 }}>Ask your consultant to provide an example.</div>
+                  <div style={{ fontSize: 12, color: '#8a96a2', maxWidth: 240, lineHeight: 1.7 }}>
+                    {(isAdmin || isConsultant) ? 'Click "Manage examples" to assign examples from the template library.' : 'Ask your consultant to assign an example for this document.'}
+                  </div>
                 </div>
               )}
               <div style={{ height: 48 }} />
@@ -858,11 +1111,12 @@ export default function DocumentEditorPage() {
         {/* Comments panel */}
         {showComments && (
           <CommentsPanel
-            comments={comments} commentsLoading={commentsLoading}
+            comments={comments} commentsLoading={commentsLoading} members={members}
             newComment={newComment} setNewComment={setNewComment}
             replyTo={replyTo} setReplyTo={setReplyTo}
             postingComment={postingComment} postComment={postComment}
             resolveComment={resolveComment} onClose={() => setShowComments(false)}
+            activeCommentId={activeCommentId} setActiveCommentId={setActiveCommentId}
           />
         )}
       </div>
