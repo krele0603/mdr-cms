@@ -17,6 +17,7 @@ import CharacterCount from '@tiptap/extension-character-count'
 import FontFamily from '@tiptap/extension-font-family'
 import TextStyle from '@tiptap/extension-text-style'
 import { TableOfContents, getHierarchicalIndexes } from '@tiptap/extension-table-of-contents'
+import { VariableNode, VARIABLE_STYLES } from '@/lib/variable-node'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -237,6 +238,30 @@ function Toolbar({ editor, sizes, onSizeChange, showOutline, onToggleOutline, on
       <Sep />
       <div ref={tocRef}><Btn title="Table of Contents" active={showToc || showOutline} onClick={() => { setTocPos(getPos(tocRef)); setShowToc(v => !v); setShowTable(false); setShowFont(false) }}><I.ToC /><I.ChevDown /></Btn></div>
       {showToc && (<><Overlay onClose={() => setShowToc(false)} /><TocMenu pos={tocPos} onClose={() => setShowToc(false)} showOutline={showOutline} onToggleOutline={onToggleOutline} onInsertToc={onInsertToc} /></>)}
+      {/* Variables */}
+      <Sep />
+      <select
+        value=""
+        onChange={e => {
+          const tag = e.target.value
+          if (!tag || !editor) return
+          editor.chain().focus().insertContent({ type: 'variableNode', attrs: { tag } }).run()
+          e.target.value = ''
+        }}
+        style={{ height: 28, padding: '0 6px', fontSize: 12, border: '0.5px solid rgba(78,140,140,0.3)', borderRadius: 5, background: 'rgba(78,140,140,0.06)', cursor: 'pointer', color: '#2e5f5f', maxWidth: 130 }}
+      >
+        <option value="">+ Variable</option>
+            <option value="$device_name">Device name</option>
+            <option value="$manufacturer_name">Manufacturer name</option>
+            <option value="$manufacturer_address">Manufacturer address</option>
+            <option value="$manufacturer_contact">Manufacturer contact</option>
+            <option value="$manufacturer_email">Manufacturer email</option>
+            <option value="$intended_use">Intended use</option>
+            <option value="$device_description">Device description</option>
+            <option value="$classification">Device classification</option>
+            <option value="$basic_udi">Basic UDI-DI</option>
+            <option value="$notified_body">Notified body</option>
+      </select>
     </div>
   )
 }
@@ -266,12 +291,13 @@ function buildEditorStyles(sizes: typeof DEFAULT_SIZES) {
     .ProseMirror p.is-editor-empty:first-child::before { content: attr(data-placeholder); float: left; color: #8a96a2; pointer-events: none; height: 0; font-style: italic; }
     .tableWrapper { overflow-x: auto; }
     .column-resize-handle { background-color: #4e8c8c; bottom: -2px; position: absolute; right: -2px; top: 0; width: 4px; pointer-events: none; }
+    ${VARIABLE_STYLES}
   `
 }
 
 function makeExtensions(placeholder: string) {
   return [
-    StarterKit, TextStyle, FontFamily, Underline,
+    StarterKit, TextStyle, FontFamily, Underline, VariableNode,
     Highlight.configure({ multicolor: false }),
     TextAlign.configure({ types: ['heading', 'paragraph'] }),
     Table.configure({ resizable: true }),
@@ -459,7 +485,7 @@ export default function TemplateEditorPage() {
 
   const templateEditor = useEditor({
     extensions: [
-      StarterKit, TextStyle, FontFamily, Underline,
+      StarterKit, TextStyle, FontFamily, Underline, VariableNode,
       Highlight.configure({ multicolor: false }),
       TextAlign.configure({ types: ['heading', 'paragraph'] }),
       Table.configure({ resizable: true }),

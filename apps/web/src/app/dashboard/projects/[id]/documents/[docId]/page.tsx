@@ -636,6 +636,18 @@ export default function DocumentEditorPage() {
     })
   }, [projectId])
 
+  // Re-render variable chips when variable values load
+  useEffect(() => {
+    if (variables.length === 0) return
+    document.querySelectorAll('[data-variable]').forEach((el: Element) => {
+      const tag = el.getAttribute('data-variable')
+      if (!tag) return
+      const value = (window as any).__projectVariables?.[tag] || null
+      el.textContent = value || tag
+      el.className = value ? 'variable-chip' : 'variable-chip variable-chip--empty'
+    })
+  }, [variables])
+
   useEffect(() => { if (showComments) loadComments() }, [showComments])
 
   async function loadComments() {
