@@ -2,69 +2,41 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { query, queryOne } from '@/lib/db'
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const session = await getSession()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  let projects
+  const { searchParams } = new URL(req.url)
+  const search = searchParams.get('search') || ''
 
-  if (session.role === 'admin') {
+  let projects
+  if (session.role === 'admin' || session.role === 'consultant') {
     projects = await query(`
-      SELECT
-        p.id, p.name, p.device_name, p.description,
-        p.manufacturer_name, p.manufacturer_country,
-        p.status, p.created_at,
-        dl.name as list_name, dl.is_builtin, dl.builtin_key,
-        u.name as created_by_name,
-        COUNT(DISTINCT pm.user_id) as member_count,
-        COUNT(DISTINCT pd.id) as total_docs,
-        COUNT(DISTINCT pd.id) FILTER (WHERE pd.status = 'approved') as approved_docs
+      SELECT p.id, p.name, p.device_name, p.manufacturer_name, p.status,
+             p.created_at, p.updated_at, u.name AS created_by_name,
+             dl.name AS list_name,
+             COUNT(DISTINCT pd.id) AS document_count,
+             COUNT(DISTINCT CASE WHEN pd.status = 'approved' THEN pd.id END) AS approved_count
       FROM projects p
-      LEFT JOIN document_lists dl ON p.list_id = dl.id
-      LEFT JOIN users u ON p.created_by = u.id
-      LEFT JOIN project_members pm ON p.id = pm.project_id
-      LEFT JOIN project_documents pd ON p.id = pd.project_id
-      GROUP BY p.id, dl.name, dl.is_builtin, dl.builtin_key, u.name
-      ORDER BY p.created_at DESC
-    `)
-  } else if (session.role === 'consultant') {
-    projects = await query(`
-      SELECT
-        p.id, p.name, p.device_name, p.description,
-        p.manufacturer_name, p.manufacturer_country,
-        p.status, p.created_at,
-        dl.name as list_name, dl.is_builtin, dl.builtin_key,
-        u.name as created_by_name,
-        COUNT(DISTINCT pm.user_id) as member_count,
-        COUNT(DISTINCT pd.id) as total_docs,
-        COUNT(DISTINCT pd.id) FILTER (WHERE pd.status = 'approved') as approved_docs
-      FROM projects p
-      LEFT JOIN document_lists dl ON p.list_id = dl.id
-      LEFT JOIN users u ON p.created_by = u.id
-      LEFT JOIN project_members pm ON p.id = pm.project_id
-      LEFT JOIN project_documents pd ON p.id = pd.project_id
-      WHERE pm.user_id = $1 OR p.created_by = $1
-      GROUP BY p.id, dl.name, dl.is_builtin, dl.builtin_key, u.name
-      ORDER BY p.created_at DESC
-    `, [session.id])
+      LEFT JOIN users u ON u.id = p.created_by
+      LEFT JOIN document_lists dl ON dl.id = p.list_id
+      LEFT JOIN project_documents pd ON pd.project_id = p.id
+      WHERE ($1 = '' OR p.name ILIKE $2 OR p.device_name ILIKE $2)
+      GROUP BY p.id, u.name, dl.name
+      ORDER BY p.updated_at DESC
+    `, [search, `%${search}%`])
   } else {
     projects = await query(`
-      SELECT
-        p.id, p.name, p.device_name, p.description,
-        p.manufacturer_name, p.manufacturer_country,
-        p.status, p.created_at,
-        dl.name as list_name, dl.is_builtin, dl.builtin_key,
-        u.name as created_by_name,
-        COUNT(DISTINCT pd.id) as total_docs,
-        COUNT(DISTINCT pd.id) FILTER (WHERE pd.status = 'approved') as approved_docs
+      SELECT p.id, p.name, p.device_name, p.manufacturer_name, p.status,
+             p.created_at, p.updated_at, dl.name AS list_name,
+             COUNT(DISTINCT pd.id) AS document_count,
+             COUNT(DISTINCT CASE WHEN pd.status = 'approved' THEN pd.id END) AS approved_count
       FROM projects p
-      LEFT JOIN document_lists dl ON p.list_id = dl.id
-      LEFT JOIN users u ON p.created_by = u.id
-      LEFT JOIN project_members pm ON p.id = pm.project_id
-      LEFT JOIN project_documents pd ON p.id = pd.project_id
-      WHERE pm.user_id = $1
-      GROUP BY p.id, dl.name, dl.is_builtin, dl.builtin_key, u.name
-      ORDER BY p.created_at DESC
+      JOIN project_members pm ON pm.project_id = p.id AND pm.user_id = $1::uuid
+      LEFT JOIN document_lists dl ON dl.id = p.list_id
+      LEFT JOIN project_documents pd ON pd.project_id = p.id
+      GROUP BY p.id, dl.name
+      ORDER BY p.updated_at DESC
     `, [session.id])
   }
 
@@ -78,91 +50,107 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json()
-  const {
-    name, device_name, description,
-    manufacturer_name, manufacturer_country,
-    manufacturer_contact, manufacturer_email,
-    list_id,
-  } = body
+  const { name, device_name, manufacturer_name, manufacturer_country, list_id } = body
 
-  if (!name || !device_name || !manufacturer_name || !list_id) {
-    return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
+  if (!name?.trim() || !device_name?.trim() || !list_id) {
+    return NextResponse.json({ error: 'name, device_name, and list_id are required' }, { status: 400 })
   }
 
-  const list = await queryOne('SELECT id FROM document_lists WHERE id = $1', [list_id])
-  if (!list) return NextResponse.json({ error: 'Invalid list' }, { status: 400 })
-
   // Create project
-  const [project] = await query<{ id: string }>(`
-    INSERT INTO projects (
-      name, device_name, description,
-      manufacturer_name, manufacturer_country,
-      manufacturer_contact, manufacturer_email,
-      list_id, created_by, status
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'draft')
-    RETURNING id
+  const project = await queryOne(`
+    INSERT INTO projects (name, device_name, manufacturer_name, manufacturer_country, list_id, created_by, status)
+    VALUES ($1, $2, $3, $4, $5::uuid, $6::uuid, 'draft')
+    RETURNING id, name, device_name, status
   `, [
-    name, device_name, description || null,
-    manufacturer_name, manufacturer_country || null,
-    manufacturer_contact || null, manufacturer_email || null,
-    list_id, session.id,
+    name.trim(),
+    device_name.trim(),
+    manufacturer_name?.trim() || '',
+    manufacturer_country?.trim() || null,
+    list_id,
+    session.id,
   ])
 
-  // Add creator as member
-  await query(
-    'INSERT INTO project_members (project_id, user_id, role) VALUES ($1, $2, $3)',
-    [project.id, session.id, session.role]
-  )
+  // Add creator as admin member
+  await query(`
+    INSERT INTO project_members (project_id, user_id, role)
+    VALUES ($1::uuid, $2::uuid, 'admin')
+    ON CONFLICT DO NOTHING
+  `, [project.id, session.id])
 
-  // Load list documents with their template info
-  const listDocs = await query<{
-    id: string
-    annex: string
-    name: string
-    code: string
-    template_id: string | null
-  }>(`
+  // Seed built-in variables
+  const BUILTIN_VARIABLES = [
+    { tag: '$device_name',          label: 'Device name' },
+    { tag: '$manufacturer_name',    label: 'Manufacturer name' },
+    { tag: '$manufacturer_address', label: 'Manufacturer address' },
+    { tag: '$manufacturer_contact', label: 'Manufacturer contact' },
+    { tag: '$manufacturer_email',   label: 'Manufacturer email' },
+    { tag: '$intended_use',         label: 'Intended use' },
+    { tag: '$device_description',   label: 'Device description' },
+    { tag: '$classification',       label: 'Device classification' },
+    { tag: '$basic_udi',            label: 'Basic UDI-DI' },
+    { tag: '$notified_body',        label: 'Notified body' },
+  ]
+  for (const v of BUILTIN_VARIABLES) {
+    await query(`
+      INSERT INTO project_variables (project_id, tag, name, value, status)
+      VALUES ($1::uuid, $2, $3, '', 'draft')
+      ON CONFLICT (project_id, tag) DO NOTHING
+    `, [project.id, v.tag, v.label])
+  }
+
+  // Auto-populate device_name and manufacturer_name variables from project fields
+  await query(`
+    UPDATE project_variables SET value = $1 WHERE project_id = $2::uuid AND tag = '$device_name'
+  `, [device_name.trim(), project.id])
+  if (manufacturer_name?.trim()) {
+    await query(`
+      UPDATE project_variables SET value = $1 WHERE project_id = $2::uuid AND tag = '$manufacturer_name'
+    `, [manufacturer_name.trim(), project.id])
+  }
+
+  // Create documents from list
+  interface ListDoc {
+    id: string; annex: string; name: string; code: string; template_id: string | null
+  }
+  const listDocs = await query<ListDoc>(`
     SELECT id, annex, name, code, template_id
     FROM list_documents
-    WHERE list_id = $1
+    WHERE list_id = $1::uuid
     ORDER BY annex, position
   `, [list_id])
 
-  if (listDocs.length > 0) {
-    // For each doc, fetch the current template version content if template is linked
-    for (const d of listDocs) {
-      let content = {}
-      let templateVersionId = null
+  for (const d of listDocs) {
+    let content: any = {}
+    let templateVersionId: string | null = null
 
-      if (d.template_id) {
-        const tv = await queryOne<{ id: string; content: any }>(`
-          SELECT id, content
-          FROM template_versions
-          WHERE template_id = $1::uuid AND is_current = TRUE
-          LIMIT 1
-        `, [d.template_id])
-
-        if (tv) {
-          content = tv.content ?? {}
-          templateVersionId = tv.id
-        }
+    if (d.template_id) {
+      const tv = await queryOne<{ id: string; content: any }>(`
+        SELECT id, content
+        FROM template_versions
+        WHERE template_id = $1::uuid AND is_current = TRUE
+        LIMIT 1
+      `, [d.template_id])
+      if (tv) {
+        content = tv.content ?? {}
+        templateVersionId = tv.id
       }
-
-      await query(`
-        INSERT INTO project_documents
-          (project_id, annex, name, code, status, content, template_version_id)
-        VALUES
-          ($1::uuid, $2, $3, $4, 'draft', $5, $6)
-      `, [
-        project.id,
-        d.annex,
-        d.name,
-        d.code,
-        JSON.stringify(content),
-        templateVersionId,
-      ])
     }
+
+    await query(`
+      INSERT INTO project_documents
+        (project_id, list_document_id, annex, name, code, status, content, template_version_id)
+      VALUES
+        ($1::uuid, $2::uuid, $3, $4, $5, 'draft', $6, $7)
+    `, [
+      project.id,
+      d.id,
+      d.annex,
+      d.name,
+      d.code,
+      JSON.stringify(content),
+      templateVersionId,
+    ])
   }
 
-  return NextResponse.json({ ok: true, id: project.id }, { status: 201 })
+  return NextResponse.json(project, { status: 201 })
 }

@@ -638,6 +638,11 @@ export default function DocumentEditorPage() {
   // Floating bubble for selection
   const [bubble, setBubble] = useState<{ x: number; y: number; text: string; from: number; to: number } | null>(null)
 
+  // Template version upgrade
+  const [templateVersions, setTemplateVersions] = useState<any[]>([])
+  const [showVersionUpgrade, setShowVersionUpgrade] = useState(false)
+  const [upgradingTemplate, setUpgradingTemplate] = useState(false)
+
   // Approval
   const [showRequestChanges, setShowRequestChanges] = useState(false)
   const [changeReason, setChangeReason] = useState('')
@@ -645,6 +650,7 @@ export default function DocumentEditorPage() {
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const latestContent = useRef<any>(null)
+  const contentLoaded = useRef<boolean>(false)
 
   useEffect(() => {
     fetch('/api/auth/session').then(r => r.ok ? r.json() : null).then(d => { if (d?.user) setUserRole(d.user.role) })
@@ -660,6 +666,11 @@ export default function DocumentEditorPage() {
         // will be updated when examples load
         setLoading(false)
         loadExamples()
+        // Load available template versions for upgrade
+        fetch(`/api/projects/${projectId}/documents/${data.id}/upgrade-template`)
+            .then(r => r.ok ? r.json() : [])
+            .then(setTemplateVersions)
+            .catch(() => {})
       })
       .catch(() => router.push(`/dashboard/projects/${projectId}`))
   }, [projectId, docId])
@@ -851,6 +862,20 @@ export default function DocumentEditorPage() {
     if (res.ok) { setDocStatus('inprogress'); setChangeReason(''); setShowRequestChanges(false); setShowComments(true); loadComments() }
   }
 
+  async function upgradeTemplate(versionId: string, applyContent: boolean) {
+    setUpgradingTemplate(true)
+    try {
+      const res = await fetch(`/api/projects/${projectId}/documents/${docId}/upgrade-template`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ template_version_id: versionId, apply_content: applyContent }),
+      })
+      if (res.ok) {
+        setShowVersionUpgrade(false)
+        window.location.reload()
+      }
+    } finally { setUpgradingTemplate(false) }
+  }
+
   async function reviseDoc() {
     if (!confirm('Create a new revision? The approved version will be preserved.')) return
     setRevising(true)
@@ -909,6 +934,7 @@ export default function DocumentEditorPage() {
       },
     },
     onUpdate: ({ editor }) => {
+      if (!contentLoaded.current) return // Don't save until doc content is loaded
       const content = editor.getJSON()
       latestContent.current = content
       setSaveState('unsaved')
@@ -937,6 +963,8 @@ export default function DocumentEditorPage() {
       editor.commands.setContent(doc.content)
       setWordCount(editor.storage.characterCount?.words() ?? 0)
     }
+    // Mark content as loaded so autosave can begin
+    contentLoaded.current = true
   }, [editor, doc])
 
   // Set editor read-only for approved docs viewed by client
@@ -1079,7 +1107,53 @@ export default function DocumentEditorPage() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '5px 16px', flexShrink: 0, borderBottom: '1px solid #e0ddd8', background: '#fff', fontSize: 11, color: '#8a96a2' }}>
         <span style={{ fontWeight: 500, color: '#5a6472' }}>{doc.annex}</span>
         <span>·</span><span style={{ fontFamily: 'monospace' }}>{doc.code}</span>
-        {doc.template_name && <><span>·</span><span>Template: {doc.template_name} {doc.template_version}</span></>}
+        {doc.template_name && (
+          <>
+            <span>·</span>
+            <span>Template: {doc.template_name} {doc.template_version}</span>
+            {(isAdmin || isConsultant) && templateVersions.length > 1 && (
+              <div style={{ position: 'relative' }}>
+                <button onClick={() => setShowVersionUpgrade(v => !v)}
+                  style={{ height: 18, padding: '0 6px', fontSize: 10, background: showVersionUpgrade ? 'rgba(78,140,140,0.15)' : 'rgba(0,0,0,0.06)', border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 3, cursor: 'pointer', color: '#5a6472' }}>
+                  ↑ Upgrade
+                </button>
+                {showVersionUpgrade && (
+                  <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4, zIndex: 200, background: '#fff', border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.12)', minWidth: 300, padding: 12 }}>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: '#5a6472', marginBottom: 8 }}>Switch template version</div>
+                    {templateVersions.map((tv: any) => {
+                      const isCurrent = tv.id === tv.current_doc_version_id
+                      return (
+                        <div key={tv.id} style={{ padding: '8px 0', borderBottom: '0.5px solid #f0ede9', display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <span style={{ fontSize: 12, fontWeight: 600, fontFamily: 'monospace' }}>{tv.version}</span>
+                              {isCurrent && <span style={{ fontSize: 10, padding: '1px 5px', borderRadius: 3, background: 'rgba(78,140,140,0.1)', color: '#2e5f5f' }}>current</span>}
+                              {tv.is_current && !isCurrent && <span style={{ fontSize: 10, padding: '1px 5px', borderRadius: 3, background: 'rgba(200,169,110,0.1)', color: '#8a6020' }}>latest</span>}
+                            </div>
+                            {tv.change_note && <div style={{ fontSize: 11, color: '#8a96a2', marginTop: 2 }}>{tv.change_note}</div>}
+                            <div style={{ fontSize: 10, color: '#8a96a2' }}>{new Date(tv.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</div>
+                          </div>
+                          {!isCurrent && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                              <button onClick={() => upgradeTemplate(tv.id, false)} disabled={upgradingTemplate}
+                                style={{ height: 24, padding: '0 8px', fontSize: 10, background: 'transparent', border: '0.5px solid rgba(0,0,0,0.2)', borderRadius: 4, cursor: 'pointer', color: '#5a6472', whiteSpace: 'nowrap' }}>
+                                Link only
+                              </button>
+                              <button onClick={() => upgradeTemplate(tv.id, true)} disabled={upgradingTemplate}
+                                style={{ height: 24, padding: '0 8px', fontSize: 10, background: '#4e8c8c', border: 'none', borderRadius: 4, cursor: 'pointer', color: '#fff', whiteSpace: 'nowrap' }}>
+                                Apply content
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+          </>
+        )}
         <span>·</span><span>{doc.device_name}</span>
         <span style={{ marginLeft: 'auto' }}>{wordCount} words</span>
       </div>
