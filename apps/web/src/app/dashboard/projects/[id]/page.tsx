@@ -7,6 +7,7 @@ const ANNEXES = ['Annex I','Annex II','Annex III','Annex IV','Annex V',
                  'Annex VI','Annex VII','Annex VIII','Annex IX','Annex X']
 
 const DOC_STATUS: Record<string, {bg:string;color:string;border:string;label:string}> = {
+  superseded: { bg: 'rgba(90,100,114,0.08)', color: '#8a96a2', border: 'rgba(90,100,114,0.2)', label: 'Superseded' },
   draft:      {bg:'#F1EFE8',color:'#5F5E5A',border:'#D3D1C7',label:'Draft'},
   inprogress: {bg:'#FAEEDA',color:'#633806',border:'#FAC775',label:'In progress'},
   review:     {bg:'#E6F1FB',color:'#0C447C',border:'#85B7EB',label:'In review'},

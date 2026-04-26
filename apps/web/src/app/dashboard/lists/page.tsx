@@ -61,6 +61,18 @@ export default function ListsPage() {
   const [editDocName, setEditDocName] = useState('')
   const [editDocCode, setEditDocCode] = useState('')
 
+  async function deleteList(id: string, name: string) {
+    if (!confirm(`Delete TF Structure "${name}"? Projects using it will not be affected.`)) return
+    const res = await fetch(`/api/lists/${id}`, { method: 'DELETE' })
+    if (res.ok) {
+      loadLists()
+      if (activeListId === id) setActiveListId(null)
+    } else {
+      const err = await res.json().catch(() => ({}))
+      alert(err.error || 'Failed to delete')
+    }
+  }
+
   async function loadLists() {
     const res = await fetch('/api/lists')
     const data = await res.json()
@@ -212,6 +224,14 @@ export default function ListsPage() {
             <div style={{ fontSize: 12, color: activeListId === l.id ? '#185FA5' : '#9b9991', marginTop: 3 }}>
               {Number(l.doc_count)} document{Number(l.doc_count) !== 1 ? 's' : ''} configured
             </div>
+            {!l.is_builtin && (
+              <button
+                onClick={e => { e.stopPropagation(); deleteList(l.id, l.name) }}
+                style={{ marginTop: 8, height: 22, padding: '0 8px', fontSize: 10, background: 'transparent', border: '0.5px solid rgba(148,48,48,0.3)', borderRadius: 4, color: '#943030', cursor: 'pointer' }}
+              >
+                Delete
+              </button>
+            )}
           </div>
         ))}
       </div>

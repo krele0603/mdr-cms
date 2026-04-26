@@ -437,6 +437,7 @@ export default function TemplateEditorPage() {
   const [saveState, setSaveState] = useState<SaveState>('saved')
   const [showSaveModal, setShowSaveModal] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
+  const [previewVersionId, setPreviewVersionId] = useState<string | null>(null)
   const [sizes, setSizes] = useState(DEFAULT_SIZES)
   const [wordCount, setWordCount] = useState(0)
   const [tocItems, setTocItems] = useState<any[]>([])
@@ -469,6 +470,32 @@ export default function TemplateEditorPage() {
       }
       setTemplate(data); setLoading(false)
     } catch { router.push('/dashboard/templates') }
+  }
+
+  async function previewVersion(versionId: string) {
+    if (previewVersionId === versionId) {
+      setPreviewVersionId(null)
+      if (template?.content) templateEditor?.commands.setContent(template.content)
+      templateEditor?.setEditable(true)
+      return
+    }
+    const res = await fetch(`/api/templates/${templateId}/versions/${versionId}`)
+    if (res.ok) {
+      const data = await res.json()
+      setPreviewVersionId(versionId)
+      if (templateEditor && data.content) {
+        templateEditor.setEditable(false)
+        templateEditor.commands.setContent(data.content)
+      }
+    }
+  }
+
+  function restoreCurrentVersion() {
+    setPreviewVersionId(null)
+    if (templateEditor) {
+      templateEditor.setEditable(true)
+      if (template?.content) templateEditor.commands.setContent(template.content)
+    }
   }
 
   async function loadExamples() {
@@ -619,7 +646,13 @@ export default function TemplateEditorPage() {
               <Toolbar editor={templateEditor} sizes={sizes} onSizeChange={(k, v) => setSizes(p => ({ ...p, [k]: v }))} showOutline={showOutline} onToggleOutline={() => setShowOutline(v => !v)} onInsertToc={insertToc} />
               <div style={{ flex: 1, overflow: 'hidden', display: 'flex' }}>
                 {showOutline && <OutlinePanel items={tocItems} onClose={() => setShowOutline(false)} />}
-                <div style={{ flex: 1, overflowY: 'auto', padding: '32px 24px', background: '#f5f2ee' }}>
+                {previewVersionId && (
+                <div style={{ padding: '8px 16px', background: 'rgba(200,169,110,0.1)', borderBottom: '1px solid rgba(200,169,110,0.3)', fontSize: 12, color: '#8a6020', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+                  <span>📖 Viewing older version (read-only)</span>
+                  <button onClick={restoreCurrentVersion} style={{ height: 24, padding: '0 10px', fontSize: 11, background: '#4e8c8c', border: 'none', borderRadius: 5, color: '#fff', cursor: 'pointer' }}>Back to current</button>
+                </div>
+              )}
+              <div style={{ flex: 1, overflowY: 'auto', padding: '32px 24px', background: '#f5f2ee' }}>
                   <div style={{ maxWidth: 780, margin: '0 auto', background: '#fff', boxShadow: '0 1px 4px rgba(0,0,0,0.08), 0 4px 16px rgba(0,0,0,0.04)', borderRadius: 2, padding: '60px 72px', minHeight: 900 }}>
                     <EditorContent editor={templateEditor} />
                   </div>
@@ -639,6 +672,10 @@ export default function TemplateEditorPage() {
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 3 }}>
                         <span style={{ fontSize: 12, fontWeight: 600, fontFamily: 'monospace', color: v.is_current ? '#2e5f5f' : '#1a1f24' }}>{v.version}</span>
                         {v.is_current && <span style={{ fontSize: 10, padding: '1px 5px', borderRadius: 3, background: 'rgba(78,140,140,0.15)', color: '#2e5f5f' }}>current</span>}
+                        <button onClick={() => previewVersion(v.id)}
+                          style={{ height: 18, padding: '0 6px', fontSize: 10, background: previewVersionId === v.id ? 'rgba(78,140,140,0.15)' : 'rgba(0,0,0,0.06)', border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 3, cursor: 'pointer', color: previewVersionId === v.id ? '#2e5f5f' : '#5a6472', marginLeft: 'auto' }}>
+                          {previewVersionId === v.id ? 'Hide' : 'View'}
+                        </button>
                       </div>
                       {v.change_note && <div style={{ fontSize: 11, color: '#5a6472', marginBottom: 3 }}>{v.change_note}</div>}
                       <div style={{ fontSize: 10, color: '#8a96a2' }}>{v.created_by_name ?? 'Unknown'} · {new Date(v.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
