@@ -12,6 +12,7 @@ RUN npm install
 FROM base AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
+ARG CACHEBUST=1
 COPY . .
 
 ENV NEXT_TELEMETRY_DISABLED=1

@@ -18,6 +18,7 @@ import CharacterCount from '@tiptap/extension-character-count'
 import FontFamily from '@tiptap/extension-font-family'
 import TextStyle from '@tiptap/extension-text-style'
 import { TableOfContents, getHierarchicalIndexes } from '@tiptap/extension-table-of-contents'
+import { VariableNode, VARIABLE_STYLES, setProjectVariables, resolveVariablesInContent } from '@/lib/variable-node'
 
 // ── CommentMark — invisible anchor stored in doc JSON ─────────────────────────
 // Renders as a highlighted span with data-comment-id attribute
@@ -217,9 +218,10 @@ function OutlinePanel({ items, onClose }: { items: TocItem[]; onClose: () => voi
 
 // ── Toolbar ───────────────────────────────────────────────────────────────────
 
-function Toolbar({ editor, sizes, onSizeChange, showOutline, onToggleOutline, onInsertToc }: {
+function Toolbar({ editor, sizes, onSizeChange, showOutline, onToggleOutline, onInsertToc, variables = [] }: {
   editor: any; sizes: typeof DEFAULT_SIZES; onSizeChange: (k: keyof typeof DEFAULT_SIZES, v: number) => void
   showOutline: boolean; onToggleOutline: () => void; onInsertToc: () => void
+  variables?: any[]
 }) {
   const [showTable, setShowTable] = useState(false)
   const [showFont, setShowFont] = useState(false)
@@ -268,6 +270,27 @@ function Toolbar({ editor, sizes, onSizeChange, showOutline, onToggleOutline, on
       <Sep />
       <div ref={tocRef}><Btn title="Table of Contents" active={showToc || showOutline} onClick={() => { setTocPos(getPos(tocRef)); setShowToc(v => !v); setShowTable(false); setShowFont(false) }}><I.ToC /><I.ChevDown /></Btn></div>
       {showToc && (<><Overlay onClose={() => setShowToc(false)} /><TocMenu pos={tocPos} onClose={() => setShowToc(false)} showOutline={showOutline} onToggleOutline={onToggleOutline} onInsertToc={onInsertToc} /></>)}
+      <Sep />
+      {/* Variables dropdown */}
+      {variables.length > 0 && (
+        <div style={{ position: 'relative' }}>
+          <select
+            value=""
+            onChange={e => {
+              const tag = e.target.value
+              if (!tag || !editor) return
+              editor.chain().focus().insertContent({ type: 'variableNode', attrs: { tag } }).run()
+              e.target.value = ''
+            }}
+            style={{ height: 28, padding: '0 6px', fontSize: 12, border: '0.5px solid rgba(78,140,140,0.3)', borderRadius: 5, background: 'rgba(78,140,140,0.06)', cursor: 'pointer', color: '#2e5f5f', maxWidth: 130 }}
+          >
+            <option value="">+ Variable</option>
+            {variables.filter(v => v.value).map((v: any) => (
+              <option key={v.tag} value={v.tag}>{v.name}</option>
+            ))}
+          </select>
+        </div>
+      )}
     </div>
   )
 }
@@ -514,12 +537,13 @@ function buildEditorStyles(sizes: typeof DEFAULT_SIZES) {
     .toc-block li { font-size: 13px; margin-bottom: 4px; color: #2e3640; }
     .tableWrapper { overflow-x: auto; }
     .column-resize-handle { background-color: #4e8c8c; bottom: -2px; position: absolute; right: -2px; top: 0; width: 4px; pointer-events: none; }
+    ${VARIABLE_STYLES}
   `
 }
 
 function makeExtensions(placeholder: string, onTocUpdate: (items: any[]) => void) {
   return [
-    StarterKit, TextStyle, FontFamily, Underline, CommentMark,
+    StarterKit, TextStyle, FontFamily, Underline, CommentMark, VariableNode,
     Highlight.configure({ multicolor: false }),
     TextAlign.configure({ types: ['heading', 'paragraph'] }),
     Table.configure({ resizable: true }),
@@ -555,6 +579,7 @@ export default function DocumentEditorPage() {
   const [sizes, setSizes] = useState(DEFAULT_SIZES)
   const [tocItems, setTocItems] = useState<TocItem[]>([])
   const [members, setMembers] = useState<Member[]>([])
+  const [variables, setVariables] = useState<any[]>([])
 
   // Comments state
   const [comments, setComments] = useState<Comment[]>([])
@@ -603,6 +628,12 @@ export default function DocumentEditorPage() {
 
   useEffect(() => {
     fetch(`/api/projects/${projectId}/members`).then(r => r.ok ? r.json() : []).then(setMembers)
+    fetch(`/api/projects/${projectId}/variables`).then(r => r.ok ? r.json() : null).then(data => {
+      if (data?.variables) {
+        setVariables(data.variables)
+        setProjectVariables(data.variables)
+      }
+    })
   }, [projectId])
 
   useEffect(() => { if (showComments) loadComments() }, [showComments])
@@ -1007,7 +1038,7 @@ export default function DocumentEditorPage() {
         {/* Left — editable */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRight: showReference ? '1px solid #d8d4ce' : 'none' }}>
           {!(isClient && isApproved) && (
-            <Toolbar editor={editor} sizes={sizes} onSizeChange={(k, v) => setSizes(p => ({ ...p, [k]: v }))} showOutline={showOutline} onToggleOutline={() => setShowOutline(v => !v)} onInsertToc={insertToc} />
+            <Toolbar editor={editor} sizes={sizes} onSizeChange={(k, v) => setSizes(p => ({ ...p, [k]: v }))} showOutline={showOutline} onToggleOutline={() => setShowOutline(v => !v)} onInsertToc={insertToc} variables={variables} />
           )}
           <div style={{ flex: 1, overflow: 'hidden', display: 'flex' }}>
             {showOutline && <OutlinePanel items={tocItems} onClose={() => setShowOutline(false)} />}

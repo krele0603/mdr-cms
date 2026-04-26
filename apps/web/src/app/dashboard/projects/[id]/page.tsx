@@ -204,6 +204,15 @@ export default function ProjectDetailPage() {
         <span style={{color:'#1a1a18'}}>{project.name}</span>
       </div>
 
+      {/* Project data button */}
+      <div style={{marginBottom:10,display:'flex',justifyContent:'flex-end'}}>
+        <a href={`/dashboard/projects/${id}/variables`}
+          style={{display:'inline-flex',alignItems:'center',gap:6,height:32,padding:'0 14px',fontSize:12,background:'rgba(78,140,140,0.08)',border:'0.5px solid rgba(78,140,140,0.3)',borderRadius:8,color:'#2e5f5f',textDecoration:'none',fontWeight:500}}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
+          Project data
+        </a>
+      </div>
+
       {/* Project header */}
       <div style={{background:'#fff',border:'0.5px solid rgba(0,0,0,0.1)',borderRadius:12,padding:'16px 20px',marginBottom:14}}>
         <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:12,marginBottom:12}}>

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { resolveVariablesInContent } from '@/lib/variable-node'
 import { getSession } from '@/lib/auth'
 import { queryOne } from '@/lib/db'
 
@@ -197,8 +198,18 @@ export async function GET(req: NextRequest, { params }: Params) {
       TabStopPosition, TabStopType,
     } = docx
 
-    // Convert content
-    const content = doc.content || {}
+    // Load project variables for resolution
+    const { query: dbQuery } = await import('@/lib/db')
+    const vars = await dbQuery(
+      `SELECT tag, value FROM project_variables WHERE project_id = $1::uuid AND value != ''`,
+      [params.id]
+    )
+
+    // Convert content - resolve variable nodes first
+    const rawContent = doc.content || {}
+    const content = Object.keys(rawContent).length > 0
+      ? resolveVariablesInContent(rawContent, vars as any[])
+      : rawContent
     const bodyChildren = Object.keys(content).length > 0
       ? convertNode(content, docx)
       : [new Paragraph({ children: [new TextRun({ text: '(No content)', color: '999999', italics: true })] })]
