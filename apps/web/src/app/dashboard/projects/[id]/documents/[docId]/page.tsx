@@ -16,6 +16,8 @@ import TableCell from '@tiptap/extension-table-cell'
 import Placeholder from '@tiptap/extension-placeholder'
 import CharacterCount from '@tiptap/extension-character-count'
 import FontFamily from '@tiptap/extension-font-family'
+import Color from '@tiptap/extension-color'
+import Image from '@tiptap/extension-image'
 import TextStyle from '@tiptap/extension-text-style'
 import { TableOfContents, getHierarchicalIndexes } from '@tiptap/extension-table-of-contents'
 import { VariableNode, VARIABLE_STYLES, setProjectVariables, resolveVariablesInContent } from '@/lib/variable-node'
@@ -76,6 +78,29 @@ const DOC_STATUS: Record<string, { bg: string; color: string; border: string; la
 }
 
 const DEFAULT_SIZES = { p: 14, h1: 26, h2: 20, h3: 15, h4: 14 }
+
+const HIGHLIGHT_COLORS = [
+  { label: 'Yellow',      value: '#fef08a' },
+  { label: 'Orange',      value: '#fed7aa' },
+  { label: 'Green',       value: '#bbf7d0' },
+  { label: 'Blue',        value: '#bae6fd' },
+  { label: 'Pink',        value: '#fecdd3' },
+  { label: 'Purple',      value: '#e9d5ff' },
+  { label: 'None',        value: null },
+]
+
+const TEXT_COLORS = [
+  { label: 'Default',    value: null },
+  { label: 'Black',      value: '#1a1f24' },
+  { label: 'Dark grey',  value: '#5a6472' },
+  { label: 'Grey',       value: '#8a96a2' },
+  { label: 'Teal',       value: '#2e5f5f' },
+  { label: 'Blue',       value: '#1d4ed8' },
+  { label: 'Red',        value: '#dc2626' },
+  { label: 'Orange',     value: '#ea580c' },
+  { label: 'Green',      value: '#16a34a' },
+  { label: 'Purple',     value: '#7c3aed' },
+]
 
 const FONTS = [
   { label: 'DM Sans',            value: "'DM Sans', sans-serif" },
@@ -218,24 +243,73 @@ function OutlinePanel({ items, onClose }: { items: TocItem[]; onClose: () => voi
 
 // ── Toolbar ───────────────────────────────────────────────────────────────────
 
-function Toolbar({ editor, sizes, onSizeChange, showOutline, onToggleOutline, onInsertToc, variables = [] }: {
+function Toolbar({ editor, sizes, onSizeChange, showOutline, onToggleOutline, onInsertToc, variables = [], onInsertImage, zoom, onZoomChange }: {
   editor: any; sizes: typeof DEFAULT_SIZES; onSizeChange: (k: keyof typeof DEFAULT_SIZES, v: number) => void
   showOutline: boolean; onToggleOutline: () => void; onInsertToc: () => void
   variables?: any[]
+  onInsertImage?: () => void
+  zoom: number; onZoomChange: (z: number) => void
 }) {
-  const [showTable, setShowTable] = useState(false)
   const [showFont, setShowFont] = useState(false)
-  const [showToc, setShowToc] = useState(false)
-  const tableRef = useRef<HTMLDivElement>(null)
+  const [showTextColor, setShowTextColor] = useState(false)
+  const [showHighlightColor, setShowHighlightColor] = useState(false)
+  const [showInsert, setShowInsert] = useState(false)
+  const [showInsertTable, setShowInsertTable] = useState(false)
+  const [showInsertToc, setShowInsertToc] = useState(false)
+  const [showTableOpts, setShowTableOpts] = useState(false)
   const fontRef = useRef<HTMLDivElement>(null)
-  const tocRef = useRef<HTMLDivElement>(null)
-  const [tablePos, setTablePos] = useState({ top: 0, left: 0 })
+  const textColorRef = useRef<HTMLDivElement>(null)
+  const highlightColorRef = useRef<HTMLDivElement>(null)
+  const insertRef = useRef<HTMLDivElement>(null)
+  const tableOptsRef = useRef<HTMLDivElement>(null)
   const [fontPos, setFontPos] = useState({ top: 0, left: 0 })
-  const [tocPos, setTocPos] = useState({ top: 0, left: 0 })
+  const [textColorPos, setTextColorPos] = useState({ top: 0, left: 0 })
+  const [highlightColorPos, setHighlightColorPos] = useState({ top: 0, left: 0 })
+  const [insertPos, setInsertPos] = useState({ top: 0, left: 0 })
+  const [tableOptsPos, setTableOptsPos] = useState({ top: 0, left: 0 })
+
   if (!editor) return null
+
   const headingValue = editor.isActive('heading', { level: 1 }) ? '1' : editor.isActive('heading', { level: 2 }) ? '2' : editor.isActive('heading', { level: 3 }) ? '3' : editor.isActive('heading', { level: 4 }) ? '4' : '0'
   const currentFont = FONTS.find(f => editor.isActive('textStyle', { fontFamily: f.value }))?.value || FONTS[0].value
+  const inTable = editor.can().addColumnAfter()
   function getPos(ref: React.RefObject<HTMLDivElement>) { if (!ref.current) return { top: 0, left: 0 }; const r = ref.current.getBoundingClientRect(); return { top: r.bottom + 4, left: r.left } }
+  function closeAll() { setShowFont(false); setShowTextColor(false); setShowHighlightColor(false); setShowInsert(false); setShowTableOpts(false) }
+
+  const menuItem = (label: string, sub: string, icon: React.ReactNode, onClick: () => void, hasArrow?: boolean) => (
+    <button onMouseDown={e => { e.preventDefault(); onClick() }}
+      style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '8px 14px', fontSize: 12, border: 'none', background: 'transparent', cursor: 'pointer', color: '#1a1f24', textAlign: 'left' as const, justifyContent: 'space-between' }}
+      onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.04)' }}
+      onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        {icon}
+        <div><div style={{ fontWeight: 500 }}>{label}</div><div style={{ fontSize: 10, color: '#8a96a2' }}>{sub}</div></div>
+      </div>
+      {hasArrow && <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="9 18 15 12 9 6"/></svg>}
+    </button>
+  )
+
+  const tableSubItems = [
+    { label: 'Insert 3×3', onClick: () => { editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(); closeAll() } },
+    { label: 'Insert 5×4', onClick: () => { editor.chain().focus().insertTable({ rows: 5, cols: 4, withHeaderRow: true }).run(); closeAll() } },
+    { label: '─', sep: true },
+    { label: 'Add column before', disabled: !inTable, onClick: () => { editor.chain().focus().addColumnBefore().run(); closeAll() } },
+    { label: 'Add column after', disabled: !inTable, onClick: () => { editor.chain().focus().addColumnAfter().run(); closeAll() } },
+    { label: 'Delete column', disabled: !inTable, danger: true, onClick: () => { editor.chain().focus().deleteColumn().run(); closeAll() } },
+    { label: '─', sep: true },
+    { label: 'Add row before', disabled: !inTable, onClick: () => { editor.chain().focus().addRowBefore().run(); closeAll() } },
+    { label: 'Add row after', disabled: !inTable, onClick: () => { editor.chain().focus().addRowAfter().run(); closeAll() } },
+    { label: 'Delete row', disabled: !inTable, danger: true, onClick: () => { editor.chain().focus().deleteRow().run(); closeAll() } },
+    { label: '─', sep: true },
+    { label: 'Toggle header row', disabled: !inTable, onClick: () => { editor.chain().focus().toggleHeaderRow().run(); closeAll() } },
+    { label: 'Delete table', disabled: !inTable, danger: true, onClick: () => { editor.chain().focus().deleteTable().run(); closeAll() } },
+  ]
+
+  const tocSubItems = [
+    { label: showOutline ? 'Hide outline panel' : 'Show outline panel', sub: 'Navigation with headings', onClick: () => { onToggleOutline(); closeAll() } },
+    { label: 'Insert ToC block', sub: 'Auto-generated from headings', onClick: () => { onInsertToc(); closeAll() } },
+  ]
+
   return (
     <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'nowrap', gap: 1, padding: '4px 10px', borderBottom: '1px solid #e0ddd8', background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.06)', overflowX: 'auto' }}>
       <Btn title="Undo" disabled={!editor.can().undo()} onClick={() => editor.chain().focus().undo().run()}><I.Undo /></Btn>
@@ -247,14 +321,69 @@ function Toolbar({ editor, sizes, onSizeChange, showOutline, onToggleOutline, on
       <select value={currentFont} onChange={e => editor.chain().focus().setFontFamily(e.target.value).run()} style={{ height: 28, padding: '0 6px', fontSize: 12, border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 5, background: '#fff', cursor: 'pointer', color: '#2e3640', maxWidth: 160, marginLeft: 4 }}>
         {FONTS.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
       </select>
-      <div ref={fontRef}><Btn title="Font sizes" active={showFont} onClick={() => { setFontPos(getPos(fontRef)); setShowFont(v => !v); setShowTable(false); setShowToc(false) }}><span style={{ fontSize: 12, fontWeight: 600 }}>Aa</span><I.ChevDown /></Btn></div>
+      <div ref={fontRef}>
+        <Btn title="Font sizes" active={showFont} onClick={() => { setFontPos(getPos(fontRef)); setShowFont(v => !v); setShowTextColor(false); setShowHighlightColor(false); setShowInsert(false) }}>
+          <span style={{ fontSize: 12, fontWeight: 600 }}>Aa</span><I.ChevDown />
+        </Btn>
+      </div>
       {showFont && (<><Overlay onClose={() => setShowFont(false)} /><FontPanel sizes={sizes} onChange={onSizeChange} onClose={() => setShowFont(false)} pos={fontPos} /></>)}
       <Sep />
       <Btn title="Bold" active={editor.isActive('bold')} onClick={() => editor.chain().focus().toggleBold().run()}><I.Bold /></Btn>
       <Btn title="Italic" active={editor.isActive('italic')} onClick={() => editor.chain().focus().toggleItalic().run()}><I.Italic /></Btn>
       <Btn title="Underline" active={editor.isActive('underline')} onClick={() => editor.chain().focus().toggleUnderline().run()}><I.Underline /></Btn>
       <Btn title="Strikethrough" active={editor.isActive('strike')} onClick={() => editor.chain().focus().toggleStrike().run()}><I.Strike /></Btn>
-      <Btn title="Highlight" active={editor.isActive('highlight')} onClick={() => editor.chain().focus().toggleHighlight().run()}><I.Highlight /></Btn>
+      {/* Text color */}
+      <div ref={textColorRef} style={{ position: 'relative' }}>
+        <button onMouseDown={e => { e.preventDefault(); setTextColorPos(getPos(textColorRef)); setShowTextColor(v => !v); setShowHighlightColor(false); setShowInsert(false); setShowFont(false) }}
+          title="Text color" style={{ height: 30, minWidth: 30, padding: '0 6px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 1, border: 'none', borderRadius: 5, background: showTextColor ? 'rgba(78,140,140,0.15)' : 'transparent', cursor: 'pointer' }}>
+          <span style={{ fontSize: 13, fontWeight: 800, color: editor.getAttributes('textStyle').color || '#1a1f24', lineHeight: 1 }}>A</span>
+          <div style={{ width: 14, height: 3, borderRadius: 1, background: editor.getAttributes('textStyle').color || '#1a1f24' }} />
+        </button>
+        {showTextColor && (
+          <><Overlay onClose={() => setShowTextColor(false)} />
+          <div style={{ position: 'fixed', top: textColorPos.top, left: textColorPos.left, zIndex: 9999, background: '#fff', border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.12)', padding: 10, width: 172 }}>
+            <div style={{ fontSize: 10, fontWeight: 600, color: '#8a96a2', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Text color</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+              {TEXT_COLORS.map(c => (
+                <button key={c.label} title={c.label} onMouseDown={e => {
+                  e.preventDefault()
+                  if (c.value) editor.chain().focus().setColor(c.value).run()
+                  else editor.chain().focus().unsetColor().run()
+                  setShowTextColor(false)
+                }} style={{ width: 22, height: 22, borderRadius: 5, border: c.value === null ? '1px dashed #ccc' : '1px solid rgba(0,0,0,0.15)', background: c.value || '#fff', cursor: 'pointer', position: 'relative', flexShrink: 0 }}>
+                  {!c.value && <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, color: '#8a96a2' }}>✕</span>}
+                </button>
+              ))}
+            </div>
+          </div></>
+        )}
+      </div>
+      {/* Highlight color */}
+      <div ref={highlightColorRef} style={{ position: 'relative' }}>
+        <button onMouseDown={e => { e.preventDefault(); setHighlightColorPos(getPos(highlightColorRef)); setShowHighlightColor(v => !v); setShowTextColor(false); setShowInsert(false); setShowFont(false) }}
+          title="Highlight" style={{ height: 30, minWidth: 30, padding: '0 6px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 1, border: 'none', borderRadius: 5, background: showHighlightColor ? 'rgba(78,140,140,0.15)' : 'transparent', cursor: 'pointer' }}>
+          <I.Highlight />
+          <div style={{ width: 14, height: 3, borderRadius: 1, background: '#fef08a', border: '0.5px solid #d4c030' }} />
+        </button>
+        {showHighlightColor && (
+          <><Overlay onClose={() => setShowHighlightColor(false)} />
+          <div style={{ position: 'fixed', top: highlightColorPos.top, left: highlightColorPos.left, zIndex: 9999, background: '#fff', border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.12)', padding: 10, width: 140 }}>
+            <div style={{ fontSize: 10, fontWeight: 600, color: '#8a96a2', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Highlight</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+              {HIGHLIGHT_COLORS.map(c => (
+                <button key={c.label} title={c.label} onMouseDown={e => {
+                  e.preventDefault()
+                  if (c.value) editor.chain().focus().toggleHighlight({ color: c.value }).run()
+                  else editor.chain().focus().unsetHighlight().run()
+                  setShowHighlightColor(false)
+                }} style={{ width: 22, height: 22, borderRadius: 5, border: c.value === null ? '1px dashed #ccc' : '1px solid rgba(0,0,0,0.15)', background: c.value || '#fff', cursor: 'pointer', position: 'relative', flexShrink: 0 }}>
+                  {!c.value && <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, color: '#8a96a2' }}>✕</span>}
+                </button>
+              ))}
+            </div>
+          </div></>
+        )}
+      </div>
       <Sep />
       <Btn title="Bullet list" active={editor.isActive('bulletList')} onClick={() => editor.chain().focus().toggleBulletList().run()}><I.BulletList /></Btn>
       <Btn title="Numbered list" active={editor.isActive('orderedList')} onClick={() => editor.chain().focus().toggleOrderedList().run()}><I.OrderedList /></Btn>
@@ -265,35 +394,82 @@ function Toolbar({ editor, sizes, onSizeChange, showOutline, onToggleOutline, on
       <Btn title="Align right" active={editor.isActive({ textAlign: 'right' })} onClick={() => editor.chain().focus().setTextAlign('right').run()}><I.AlignRight /></Btn>
       <Btn title="Justify" active={editor.isActive({ textAlign: 'justify' })} onClick={() => editor.chain().focus().setTextAlign('justify').run()}><I.AlignJust /></Btn>
       <Sep />
-      <div ref={tableRef}><Btn title="Table" active={showTable} onClick={() => { setTablePos(getPos(tableRef)); setShowTable(v => !v); setShowFont(false); setShowToc(false) }}><I.Table /><I.ChevDown /></Btn></div>
-      {showTable && (<><Overlay onClose={() => setShowTable(false)} /><TableMenu editor={editor} onClose={() => setShowTable(false)} pos={tablePos} /></>)}
+      {/* + Insert menu with nested submenus */}
+      <div ref={insertRef} style={{ position: 'relative' }}>
+        <Btn title="Insert" active={showInsert} onClick={() => { setInsertPos(getPos(insertRef)); setShowFont(false); setShowTextColor(false); setShowHighlightColor(false); setShowTableOpts(false); setShowInsert(v => !v); }}>
+          <span style={{ fontSize: 12, fontWeight: 600 }}>+ Insert</span><I.ChevDown />
+        </Btn>
+        {showInsert && (
+          <><Overlay onClose={() => { setShowInsert(false); setShowInsertTable(false); setShowInsertToc(false) }} />
+          <div style={{ position: 'fixed', top: insertPos.top, left: insertPos.left, zIndex: 9999, background: '#fff', border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 10, boxShadow: '0 4px 24px rgba(0,0,0,0.14)', minWidth: 220, padding: '6px 0' }}>
+            {/* Image */}
+            {menuItem('Image', 'Insert from file',
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/></svg>,
+              () => { onInsertImage?.(); setShowInsert(false); setShowInsertTable(false); setShowInsertToc(false) }
+            )}
+            <div style={{ height: 1, background: 'rgba(0,0,0,0.06)', margin: '4px 0' }} />
+            {/* Table with submenu */}
+            <div style={{ position: 'relative' }}
+              onMouseEnter={() => { setShowInsertTable(true); setShowInsertToc(false) }}
+              onMouseLeave={() => setShowInsertTable(false)}>
+              {menuItem('Table', 'Insert or edit tables', <I.Table />, () => {}, true)}
+              {showInsertTable && (
+                <div style={{ position: 'absolute', left: '100%', top: 0, marginLeft: 2, background: '#fff', border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.12)', minWidth: 200, padding: '6px 0', zIndex: 10000 }}>
+                  {tableSubItems.map((item, i) => item.sep ? (
+                    <div key={i} style={{ height: 1, background: 'rgba(0,0,0,0.06)', margin: '4px 0' }} />
+                  ) : (
+                    <button key={i} onMouseDown={e => { e.preventDefault(); if (!item.disabled && item.onClick) item.onClick() }} disabled={!!item.disabled}
+                      style={{ display: 'block', width: '100%', textAlign: 'left', padding: '6px 14px', fontSize: 12, border: 'none', background: 'transparent', cursor: item.disabled ? 'default' : 'pointer', color: item.disabled ? '#ccc' : (item as any).danger ? '#943030' : '#1a1f24' }}
+                      onMouseEnter={e => { if (!item.disabled) (e.currentTarget as HTMLElement).style.background = 'rgba(0,0,0,0.04)' }}
+                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}>
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div style={{ height: 1, background: 'rgba(0,0,0,0.06)', margin: '4px 0' }} />
+            {/* Table of Contents with submenu */}
+            <div style={{ position: 'relative' }}
+              onMouseEnter={() => { setShowInsertToc(true); setShowInsertTable(false) }}
+              onMouseLeave={() => setShowInsertToc(false)}>
+              {menuItem('Table of Contents', 'Outline or insert ToC block', <I.ToC />, () => {}, true)}
+              {showInsertToc && (
+                <div style={{ position: 'absolute', left: '100%', top: 0, marginLeft: 2, background: '#fff', border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.12)', minWidth: 240, padding: '6px 0', zIndex: 10000 }}>
+                  {tocSubItems.map((item, i) => (
+                    <button key={i} onMouseDown={e => { e.preventDefault(); item.onClick() }}
+                      style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 14px', fontSize: 12, border: 'none', background: 'transparent', cursor: 'pointer', color: '#1a1f24' }}
+                      onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.04)' }}
+                      onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}>
+                      <div style={{ fontWeight: 500 }}>{item.label}</div>
+                      <div style={{ fontSize: 10, color: '#8a96a2', marginTop: 1 }}>{item.sub}</div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div></>
+        )}
+      </div>
       <Sep />
-      <div ref={tocRef}><Btn title="Table of Contents" active={showToc || showOutline} onClick={() => { setTocPos(getPos(tocRef)); setShowToc(v => !v); setShowTable(false); setShowFont(false) }}><I.ToC /><I.ChevDown /></Btn></div>
-      {showToc && (<><Overlay onClose={() => setShowToc(false)} /><TocMenu pos={tocPos} onClose={() => setShowToc(false)} showOutline={showOutline} onToggleOutline={onToggleOutline} onInsertToc={onInsertToc} /></>)}
-      <Sep />
-      {/* Variables dropdown */}
+      {/* Variable dropdown - standalone */}
       {variables.length > 0 && (
-        <div style={{ position: 'relative' }}>
-          <select
-            value=""
-            onChange={e => {
-              const tag = e.target.value
-              if (!tag || !editor) return
-              editor.chain().focus().insertContent({ type: 'variableNode', attrs: { tag } }).run()
-              e.target.value = ''
-            }}
-            style={{ height: 28, padding: '0 6px', fontSize: 12, border: '0.5px solid rgba(78,140,140,0.3)', borderRadius: 5, background: 'rgba(78,140,140,0.06)', cursor: 'pointer', color: '#2e5f5f', maxWidth: 130 }}
-          >
-            <option value="">+ Variable</option>
-            {variables.filter(v => v.value).map((v: any) => (
-              <option key={v.tag} value={v.tag}>{v.name}</option>
-            ))}
-          </select>
-        </div>
+        <select value="" onChange={e => {
+          const tag = e.target.value
+          if (!tag || !editor) return
+          editor.chain().focus().insertContent({ type: 'variableNode', attrs: { tag } }).run()
+          e.target.value = ''
+        }} style={{ height: 28, padding: '0 6px', fontSize: 12, border: '0.5px solid rgba(78,140,140,0.3)', borderRadius: 5, background: 'rgba(78,140,140,0.06)', cursor: 'pointer', color: '#2e5f5f', maxWidth: 130 }}>
+          <option value="">+ Variable</option>
+          {variables.filter(v => v.value).map((v: any) => (
+            <option key={v.tag} value={v.tag}>{v.name}</option>
+          ))}
+        </select>
       )}
     </div>
   )
 }
+
 
 // ── Comment input with @mention ───────────────────────────────────────────────
 
@@ -571,6 +747,8 @@ function buildEditorStyles(sizes: typeof DEFAULT_SIZES) {
     .toc-block ol { margin: 0; padding-left: 18px; }
     .toc-block li { font-size: 13px; margin-bottom: 4px; color: #2e3640; }
     .tableWrapper { overflow-x: auto; }
+    .ProseMirror img { max-width: 100%; height: auto; border-radius: 4px; margin: 8px 0; cursor: pointer; }
+    .ProseMirror img.ProseMirror-selectednode { outline: 2px solid #4e8c8c; }
     .column-resize-handle { background-color: #4e8c8c; bottom: -2px; position: absolute; right: -2px; top: 0; width: 4px; pointer-events: none; }
     ${VARIABLE_STYLES}
   `
@@ -578,8 +756,8 @@ function buildEditorStyles(sizes: typeof DEFAULT_SIZES) {
 
 function makeExtensions(placeholder: string, onTocUpdate: (items: any[]) => void) {
   return [
-    StarterKit, TextStyle, FontFamily, Underline, CommentMark, VariableNode,
-    Highlight.configure({ multicolor: false }),
+    StarterKit, TextStyle, FontFamily, Underline, CommentMark, VariableNode, Color, Image.configure({ inline: false, allowBase64: true }),
+    Highlight.configure({ multicolor: true }),
     TextAlign.configure({ types: ['heading', 'paragraph'] }),
     Table.configure({ resizable: true }),
     TableRow, TableHeader, TableCell,
@@ -603,6 +781,7 @@ export default function DocumentEditorPage() {
   const [showReference, setShowReference] = useState(true)
   const [showOutline, setShowOutline] = useState(false)
   const [showComments, setShowComments] = useState(false)
+  const [leftWidth, setLeftWidth] = useState(60) // percentage of split pane
   const [docStatus, setDocStatus] = useState('draft')
   const [hasExample, setHasExample] = useState(false)
   const [userRole, setUserRole] = useState<string | null>(null)
@@ -612,6 +791,7 @@ export default function DocumentEditorPage() {
   const [revising, setRevising] = useState(false)
   const [wordCount, setWordCount] = useState(0)
   const [sizes, setSizes] = useState(DEFAULT_SIZES)
+  const [zoom, setZoom] = useState(100)
   const [tocItems, setTocItems] = useState<TocItem[]>([])
   const [members, setMembers] = useState<Member[]>([])
   const [variables, setVariables] = useState<any[]>([])
@@ -649,6 +829,9 @@ export default function DocumentEditorPage() {
   const [approvingDoc, setApprovingDoc] = useState(false)
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const isDragging = useRef(false)
+  const dragStartX = useRef(0)
+  const dragStartWidth = useRef(60)
   const latestContent = useRef<any>(null)
   const contentLoaded = useRef<boolean>(false)
 
@@ -897,6 +1080,50 @@ export default function DocumentEditorPage() {
       a.click(); URL.revokeObjectURL(url)
     } catch (e: any) { alert('Export failed: ' + e.message) }
     finally { setExporting(false) }
+  }
+
+  function startDividerDrag(e: React.MouseEvent) {
+    isDragging.current = true
+    dragStartX.current = e.clientX
+    dragStartWidth.current = leftWidth
+    document.addEventListener('mousemove', onDividerDrag)
+    document.addEventListener('mouseup', stopDividerDrag)
+  }
+
+  function onDividerDrag(e: MouseEvent) {
+    if (!isDragging.current) return
+    const containerWidth = window.innerWidth - 220 // minus nav
+    const dx = e.clientX - dragStartX.current
+    const newPct = dragStartWidth.current + (dx / containerWidth) * 100
+    setLeftWidth(Math.max(25, Math.min(75, newPct)))
+  }
+
+  function stopDividerDrag() {
+    isDragging.current = false
+    document.removeEventListener('mousemove', onDividerDrag)
+    document.removeEventListener('mouseup', stopDividerDrag)
+  }
+
+  function insertImage(editor: any) {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = 'image/*'
+    const maxKB = parseInt(process.env.NEXT_PUBLIC_MAX_IMAGE_SIZE_KB || '1024')
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0]
+      if (!file) return
+      if (file.size > maxKB * 1024) {
+        alert(`Image too large. Maximum size is ${maxKB}KB.`)
+        return
+      }
+      const reader = new FileReader()
+      reader.onload = (ev) => {
+        const src = ev.target?.result as string
+        editor.chain().focus().setImage({ src }).run()
+      }
+      reader.readAsDataURL(file)
+    }
+    input.click()
   }
 
   function insertToc() {
@@ -1155,7 +1382,14 @@ export default function DocumentEditorPage() {
           </>
         )}
         <span>·</span><span>{doc.device_name}</span>
-        <span style={{ marginLeft: 'auto' }}>{wordCount} words</span>
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span>{wordCount} words</span>
+            <span style={{ width: 1, height: 12, background: 'rgba(0,0,0,0.15)', display: 'inline-block' }} />
+            <button onClick={() => setZoom(z => Math.max(50, z - 10))} style={{ width: 20, height: 20, border: '0.5px solid rgba(0,0,0,0.2)', borderRadius: 3, background: '#f5f2ee', cursor: 'pointer', fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>−</button>
+            <span style={{ minWidth: 38, textAlign: 'center', fontSize: 11, color: '#5a6472' }}>{zoom}%</span>
+            <button onClick={() => setZoom(z => Math.min(200, z + 10))} style={{ width: 20, height: 20, border: '0.5px solid rgba(0,0,0,0.2)', borderRadius: 3, background: '#f5f2ee', cursor: 'pointer', fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>+</button>
+            <button onClick={() => setZoom(100)} style={{ height: 20, padding: '0 6px', border: '0.5px solid rgba(0,0,0,0.2)', borderRadius: 3, background: '#f5f2ee', cursor: 'pointer', fontSize: 10, color: '#5a6472' }}>Reset</button>
+          </div>
       </div>
 
       {isClient && isApproved && (
@@ -1180,24 +1414,37 @@ export default function DocumentEditorPage() {
       {/* Split pane */}
       <div style={{ flex: 1, overflow: 'hidden', display: 'flex' }}>
         {/* Left — editable */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRight: showReference ? '1px solid #d8d4ce' : 'none' }}>
+        <div style={{ width: showReference ? `${leftWidth}%` : '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden', flexShrink: 0 }}>
           {!(isClient && isApproved) && (
-            <Toolbar editor={editor} sizes={sizes} onSizeChange={(k, v) => setSizes(p => ({ ...p, [k]: v }))} showOutline={showOutline} onToggleOutline={() => setShowOutline(v => !v)} onInsertToc={insertToc} variables={variables} />
+            <Toolbar editor={editor} sizes={sizes} onSizeChange={(k, v) => setSizes(p => ({ ...p, [k]: v }))} showOutline={showOutline} onToggleOutline={() => setShowOutline(v => !v)} onInsertToc={insertToc} variables={variables} onInsertImage={() => insertImage(editor)} zoom={zoom} onZoomChange={setZoom} />
           )}
           <div style={{ flex: 1, overflow: 'hidden', display: 'flex' }}>
             {showOutline && <OutlinePanel items={tocItems} onClose={() => setShowOutline(false)} />}
             <div style={{ flex: 1, overflowY: 'auto', padding: '32px 24px', background: '#f5f2ee' }}>
-              <div style={{ maxWidth: 780, margin: '0 auto', background: '#fff', boxShadow: '0 1px 4px rgba(0,0,0,0.08), 0 4px 16px rgba(0,0,0,0.04)', borderRadius: 2, padding: '60px 72px', minHeight: 900 }}>
-                <EditorContent editor={editor} />
+              <div style={{ maxWidth: 780, margin: '0 auto', transformOrigin: 'top center', transform: `scale(${zoom / 100})`, marginBottom: zoom < 100 ? `${-(780 * (1 - zoom/100))}px` : 0 }}>
+                <div style={{ background: '#fff', boxShadow: '0 1px 4px rgba(0,0,0,0.08), 0 4px 16px rgba(0,0,0,0.04)', borderRadius: 2, padding: '60px 72px', minHeight: 900 }}>
+                  <EditorContent editor={editor} />
+                </div>
               </div>
               <div style={{ height: 48 }} />
             </div>
           </div>
         </div>
 
+        {/* Drag divider */}
+        {showReference && (
+          <div
+            onMouseDown={startDividerDrag}
+            onDoubleClick={() => setLeftWidth(60)}
+            title="Drag to resize · Double-click to reset"
+            style={{ width: 6, flexShrink: 0, background: 'transparent', cursor: 'col-resize', borderLeft: '1px solid #d8d4ce', borderRight: '1px solid #d8d4ce', position: 'relative', zIndex: 10 }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(78,140,140,0.2)' }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+          />
+        )}
         {/* Right — example */}
         {showReference && (
-          <div style={{ width: '40%', flexShrink: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#ede9e3', borderRight: showComments ? '1px solid #d8d4ce' : 'none' }}>
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#ede9e3', borderRight: showComments ? '1px solid #d8d4ce' : 'none' }}>
             {/* Example header */}
             <div style={{ padding: '8px 16px', flexShrink: 0, borderBottom: '1px solid #d8d4ce', background: '#e8e3dc', display: 'flex', alignItems: 'center', gap: 8 }}>
               <div style={{ fontSize: 11, fontWeight: 600, color: '#5a6472', textTransform: 'uppercase' as const, letterSpacing: '0.06em', flexShrink: 0 }}>Example</div>
