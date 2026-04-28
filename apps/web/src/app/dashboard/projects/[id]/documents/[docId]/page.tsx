@@ -251,6 +251,8 @@ function Toolbar({ editor, sizes, onSizeChange, showOutline, onToggleOutline, on
   zoom: number; onZoomChange: (z: number) => void
 }) {
   const [showFont, setShowFont] = useState(false)
+  const [showTable, setShowTable] = useState(false)
+  const [hoverCell, setHoverCell] = useState({ r: 0, c: 0 })
   const [showTextColor, setShowTextColor] = useState(false)
   const [showHighlightColor, setShowHighlightColor] = useState(false)
   const [showInsert, setShowInsert] = useState(false)
@@ -258,11 +260,13 @@ function Toolbar({ editor, sizes, onSizeChange, showOutline, onToggleOutline, on
   const [showInsertToc, setShowInsertToc] = useState(false)
   const [showTableOpts, setShowTableOpts] = useState(false)
   const fontRef = useRef<HTMLDivElement>(null)
+  const tableRef = useRef<HTMLDivElement>(null)
   const textColorRef = useRef<HTMLDivElement>(null)
   const highlightColorRef = useRef<HTMLDivElement>(null)
   const insertRef = useRef<HTMLDivElement>(null)
   const tableOptsRef = useRef<HTMLDivElement>(null)
   const [fontPos, setFontPos] = useState({ top: 0, left: 0 })
+  const [tablePos, setTablePos] = useState({ top: 0, left: 0 })
   const [textColorPos, setTextColorPos] = useState({ top: 0, left: 0 })
   const [highlightColorPos, setHighlightColorPos] = useState({ top: 0, left: 0 })
   const [insertPos, setInsertPos] = useState({ top: 0, left: 0 })
@@ -290,8 +294,6 @@ function Toolbar({ editor, sizes, onSizeChange, showOutline, onToggleOutline, on
   )
 
   const tableSubItems = [
-    { label: 'Insert 3×3', onClick: () => { editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(); closeAll() } },
-    { label: 'Insert 5×4', onClick: () => { editor.chain().focus().insertTable({ rows: 5, cols: 4, withHeaderRow: true }).run(); closeAll() } },
     { label: '─', sep: true },
     { label: 'Add column before', disabled: !inTable, onClick: () => { editor.chain().focus().addColumnBefore().run(); closeAll() } },
     { label: 'Add column after', disabled: !inTable, onClick: () => { editor.chain().focus().addColumnAfter().run(); closeAll() } },
@@ -387,7 +389,41 @@ function Toolbar({ editor, sizes, onSizeChange, showOutline, onToggleOutline, on
       <Sep />
       <Btn title="Bullet list" active={editor.isActive('bulletList')} onClick={() => editor.chain().focus().toggleBulletList().run()}><I.BulletList /></Btn>
       <Btn title="Numbered list" active={editor.isActive('orderedList')} onClick={() => editor.chain().focus().toggleOrderedList().run()}><I.OrderedList /></Btn>
-      <Btn title="Blockquote" active={editor.isActive('blockquote')} onClick={() => editor.chain().focus().toggleBlockquote().run()}><I.Blockquote /></Btn>
+      {/* Table grid picker */}
+      <div style={{ position: 'relative' }} ref={tableRef}>
+        <Btn title="Insert table" active={showTable} onClick={() => { setTablePos(getPos(tableRef)); setShowTable(v => !v); setShowFont(false); setShowTextColor(false); setShowHighlightColor(false); setShowInsert(false) }}>
+          <I.Table />
+        </Btn>
+        {showTable && (
+          <><Overlay onClose={() => { setShowTable(false); setHoverCell({ r: 0, c: 0 }) }} />
+          <div style={{ position: 'fixed', top: tablePos.top, left: tablePos.left, zIndex: 9999, background: '#fff', border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 10, boxShadow: '0 4px 24px rgba(0,0,0,0.14)', padding: '12px 12px 8px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 18px)', gap: 2, marginBottom: 6 }}>
+              {Array.from({ length: 8 }, (_, r) => Array.from({ length: 8 }, (_, c) => (
+                <div key={`${r}-${c}`}
+                  onMouseEnter={() => setHoverCell({ r: r + 1, c: c + 1 })}
+                  onMouseDown={e => { e.preventDefault(); editor.chain().focus().insertTable({ rows: r + 1, cols: c + 1, withHeaderRow: true }).run(); setShowTable(false); setHoverCell({ r: 0, c: 0 }) }}
+                  style={{ width: 18, height: 18, borderRadius: 2, border: '1px solid', borderColor: (hoverCell.r > r && hoverCell.c > c) ? '#4e8c8c' : 'rgba(0,0,0,0.15)', background: (hoverCell.r > r && hoverCell.c > c) ? 'rgba(78,140,140,0.15)' : '#fff', cursor: 'pointer' }}
+                />
+              )))}
+            </div>
+            <div style={{ fontSize: 11, color: '#5a6472', textAlign: 'center', marginBottom: 6 }}>
+              {hoverCell.r > 0 && hoverCell.c > 0 ? `${hoverCell.r} × ${hoverCell.c}` : 'Hover to select size'}
+            </div>
+            <div style={{ borderTop: '0.5px solid #e0ddd8', paddingTop: 6 }}>
+              {inTable && tableSubItems.filter(i => !('label' in i && (i.label === 'Insert 3×3' || i.label === 'Insert 5×4'))).map((item, i) => item.sep ? (
+                <div key={i} style={{ height: 1, background: 'rgba(0,0,0,0.06)', margin: '3px 0' }} />
+              ) : (
+                <button key={i} onMouseDown={e => { e.preventDefault(); if (!item.disabled && item.onClick) item.onClick() }} disabled={!!item.disabled}
+                  style={{ display: 'block', width: '100%', textAlign: 'left', padding: '5px 8px', fontSize: 11, border: 'none', background: 'transparent', cursor: item.disabled ? 'default' : 'pointer', color: item.disabled ? '#ccc' : (item as any).danger ? '#943030' : '#1a1f24', borderRadius: 4 }}
+                  onMouseEnter={e => { if (!item.disabled) (e.currentTarget as HTMLElement).style.background = 'rgba(0,0,0,0.04)' }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}>
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          </div></>
+        )}
+      </div>
       <Sep />
       <Btn title="Align left" active={editor.isActive({ textAlign: 'left' })} onClick={() => editor.chain().focus().setTextAlign('left').run()}><I.AlignLeft /></Btn>
       <Btn title="Align center" active={editor.isActive({ textAlign: 'center' })} onClick={() => editor.chain().focus().setTextAlign('center').run()}><I.AlignCenter /></Btn>
@@ -400,40 +436,29 @@ function Toolbar({ editor, sizes, onSizeChange, showOutline, onToggleOutline, on
           <span style={{ fontSize: 12, fontWeight: 600 }}>+ Insert</span><I.ChevDown />
         </Btn>
         {showInsert && (
-          <><Overlay onClose={() => { setShowInsert(false); setShowInsertTable(false); setShowInsertToc(false) }} />
-          <div style={{ position: 'fixed', top: insertPos.top, left: insertPos.left, zIndex: 9999, background: '#fff', border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 10, boxShadow: '0 4px 24px rgba(0,0,0,0.14)', minWidth: 220, padding: '6px 0' }}>
-            {/* Image */}
-            {menuItem('Image', 'Insert from file',
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/></svg>,
-              () => { onInsertImage?.(); setShowInsert(false); setShowInsertTable(false); setShowInsertToc(false) }
-            )}
+          <><Overlay onClose={() => setShowInsert(false)} />
+          <div style={{ position: 'fixed', top: insertPos.top, left: insertPos.left, zIndex: 9999, background: '#fff', border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 10, boxShadow: '0 4px 24px rgba(0,0,0,0.14)', minWidth: 200, padding: '6px 0' }}>
+            <button onMouseDown={e => { e.preventDefault(); onInsertImage?.(); setShowInsert(false) }}
+              style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '8px 14px', fontSize: 12, border: 'none', background: 'transparent', cursor: 'pointer', color: '#1a1f24', textAlign: 'left' as const }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(0,0,0,0.04)' }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/></svg>
+              <div><div style={{ fontWeight: 500 }}>Image</div><div style={{ fontSize: 10, color: '#8a96a2' }}>Insert from file</div></div>
+            </button>
             <div style={{ height: 1, background: 'rgba(0,0,0,0.06)', margin: '4px 0' }} />
-            {/* Table with submenu */}
             <div style={{ position: 'relative' }}
-              onMouseEnter={() => { setShowInsertTable(true); setShowInsertToc(false) }}
-              onMouseLeave={() => setShowInsertTable(false)}>
-              {menuItem('Table', 'Insert or edit tables', <I.Table />, () => {}, true)}
-              {showInsertTable && (
-                <div style={{ position: 'absolute', left: '100%', top: 0, marginLeft: 2, background: '#fff', border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.12)', minWidth: 200, padding: '6px 0', zIndex: 10000 }}>
-                  {tableSubItems.map((item, i) => item.sep ? (
-                    <div key={i} style={{ height: 1, background: 'rgba(0,0,0,0.06)', margin: '4px 0' }} />
-                  ) : (
-                    <button key={i} onMouseDown={e => { e.preventDefault(); if (!item.disabled && item.onClick) item.onClick() }} disabled={!!item.disabled}
-                      style={{ display: 'block', width: '100%', textAlign: 'left', padding: '6px 14px', fontSize: 12, border: 'none', background: 'transparent', cursor: item.disabled ? 'default' : 'pointer', color: item.disabled ? '#ccc' : (item as any).danger ? '#943030' : '#1a1f24' }}
-                      onMouseEnter={e => { if (!item.disabled) (e.currentTarget as HTMLElement).style.background = 'rgba(0,0,0,0.04)' }}
-                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}>
-                      {item.label}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-            <div style={{ height: 1, background: 'rgba(0,0,0,0.06)', margin: '4px 0' }} />
-            {/* Table of Contents with submenu */}
-            <div style={{ position: 'relative' }}
-              onMouseEnter={() => { setShowInsertToc(true); setShowInsertTable(false) }}
+              onMouseEnter={() => setShowInsertToc(true)}
               onMouseLeave={() => setShowInsertToc(false)}>
-              {menuItem('Table of Contents', 'Outline or insert ToC block', <I.ToC />, () => {}, true)}
+              <button onMouseDown={e => e.preventDefault()}
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, width: '100%', padding: '8px 14px', fontSize: 12, border: 'none', background: 'transparent', cursor: 'pointer', color: '#1a1f24', textAlign: 'left' as const }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(0,0,0,0.04)' }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <I.ToC />
+                  <div><div style={{ fontWeight: 500 }}>Table of Contents</div><div style={{ fontSize: 10, color: '#8a96a2' }}>Outline or insert ToC block</div></div>
+                </div>
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="9 18 15 12 9 6"/></svg>
+              </button>
               {showInsertToc && (
                 <div style={{ position: 'absolute', left: '100%', top: 0, marginLeft: 2, background: '#fff', border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.12)', minWidth: 240, padding: '6px 0', zIndex: 10000 }}>
                   {tocSubItems.map((item, i) => (
@@ -754,6 +779,73 @@ function buildEditorStyles(sizes: typeof DEFAULT_SIZES) {
   `
 }
 
+// ── Layout preview for editor header/footer ───────────────────────────────────
+
+function LayoutPreview({ layout, logo, doc, isFooter }: {
+  layout: any; logo: string | null; doc: any; isFooter: boolean
+}) {
+  if (!layout) return null
+  const colWidths: number[] = (layout.colWidths && layout.colWidths.length === layout.cols)
+    ? layout.colWidths
+    : Array(layout.cols).fill(Math.floor(100 / layout.cols))
+  const rowHeight = layout.rowHeight || 40
+  const today = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+
+  function cellContent(cell: any): React.ReactNode {
+    const st: React.CSSProperties = {
+      fontSize: cell.fontSize || 11,
+      fontWeight: cell.bold ? 700 : 400,
+      fontStyle: cell.italic ? 'italic' : 'normal',
+      color: '#5a6472',
+      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+    }
+    switch (cell.content) {
+      case 'empty': return null
+      case 'logo': return logo
+        ? <img src={logo} alt="Logo" style={{ maxHeight: rowHeight - 10, maxWidth: 100, objectFit: 'contain' }} />
+        : <span style={{ ...st, color: '#4e8c8c', fontWeight: 600 }}>LOGO</span>
+      case 'document_name': return <span style={st}>{doc?.name || 'Document name'}</span>
+      case 'document_code': return <span style={st}>{doc?.code || 'DOC-001'}</span>
+      case 'version': return <span style={st}>v1</span>
+      case 'date': return <span style={st}>{today}</span>
+      case 'page_number': return <span style={{ ...st, fontStyle: 'italic' }}>‹page›</span>
+      case 'device_name': return <span style={st}>{doc?.device_name || '$$device_name'}</span>
+      case 'manufacturer_name': return <span style={st}>{doc?.manufacturer_name || '$$manufacturer_name'}</span>
+      case 'custom': return <span style={st}>{cell.customText || ''}</span>
+      default: return null
+    }
+  }
+
+  const borderTop = layout.borderTop ? '1px solid #d8d4ce' : 'none'
+  const borderBottom = layout.borderBottom ? '1px solid #d8d4ce' : 'none'
+  const cellBorder = layout.showCellBorders ? '1px solid #e8e4de' : 'none'
+
+  return (
+    <div style={{ borderTop, borderBottom, background: '#fff' }}>
+      {Array.from({ length: layout.rows }, (_, ri) => (
+        <div key={ri} style={{ display: 'flex', height: rowHeight }}>
+          {Array.from({ length: layout.cols }, (_, ci) => {
+            const cell = layout.cells?.find((c: any) => c.row === ri && c.col === ci) || { content: 'empty', align: 'left', verticalAlign: 'center' }
+            const jc = cell.align === 'center' ? 'center' : cell.align === 'right' ? 'flex-end' : 'flex-start'
+            const ai = cell.verticalAlign === 'top' ? 'flex-start' : cell.verticalAlign === 'bottom' ? 'flex-end' : 'center'
+            return (
+              <div key={ci} style={{
+                width: `${colWidths[ci]}%`, flexShrink: 0, display: 'flex',
+                alignItems: ai, justifyContent: jc, padding: '0 8px',
+                borderRight: ci < layout.cols - 1 ? cellBorder : 'none',
+                overflow: 'hidden',
+              }}>
+                {cellContent(cell)}
+              </div>
+            )
+          })}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+
 function makeExtensions(placeholder: string, onTocUpdate: (items: any[]) => void) {
   return [
     StarterKit, TextStyle, FontFamily, Underline, CommentMark, VariableNode, Color, Image.configure({ inline: false, allowBase64: true }),
@@ -792,6 +884,9 @@ export default function DocumentEditorPage() {
   const [wordCount, setWordCount] = useState(0)
   const [sizes, setSizes] = useState(DEFAULT_SIZES)
   const [zoom, setZoom] = useState(100)
+  const [headerLayout, setHeaderLayout] = useState<any>(null)
+  const [footerLayout, setFooterLayout] = useState<any>(null)
+  const [projectLogo, setProjectLogo] = useState<string | null>(null)
   const [tocItems, setTocItems] = useState<TocItem[]>([])
   const [members, setMembers] = useState<Member[]>([])
   const [variables, setVariables] = useState<any[]>([])
@@ -843,7 +938,7 @@ export default function DocumentEditorPage() {
     fetch(`/api/projects/${projectId}/documents/${docId}`)
       .then(r => r.ok ? r.json() : Promise.reject())
       .then((data: DocData) => {
-        setDoc(data); setDocStatus(data.status)
+        setDoc(data); setDocStatus(data.status); loadLayout()
         const ex = data.example_content
         setHasExample(!!(ex && typeof ex === 'object' && Object.keys(ex).length > 0))
         // will be updated when examples load
@@ -1124,6 +1219,16 @@ export default function DocumentEditorPage() {
       reader.readAsDataURL(file)
     }
     input.click()
+  }
+
+  async function loadLayout() {
+    const res = await fetch('/api/projects/' + projectId + '/layout')
+    if (res.ok) {
+      const data = await res.json()
+      if (data.header_layout) setHeaderLayout(data.header_layout)
+      if (data.footer_layout) setFooterLayout(data.footer_layout)
+      if (data.logo) setProjectLogo(data.logo)
+    }
   }
 
   function insertToc() {
@@ -1422,8 +1527,20 @@ export default function DocumentEditorPage() {
             {showOutline && <OutlinePanel items={tocItems} onClose={() => setShowOutline(false)} />}
             <div style={{ flex: 1, overflowY: 'auto', padding: '32px 24px', background: '#f5f2ee' }}>
               <div style={{ maxWidth: 780, margin: '0 auto', transformOrigin: 'top center', transform: `scale(${zoom / 100})`, marginBottom: zoom < 100 ? `${-(780 * (1 - zoom/100))}px` : 0 }}>
-                <div style={{ background: '#fff', boxShadow: '0 1px 4px rgba(0,0,0,0.08), 0 4px 16px rgba(0,0,0,0.04)', borderRadius: 2, padding: '60px 72px', minHeight: 900 }}>
-                  <EditorContent editor={editor} />
+                <div style={{ background: '#fff', boxShadow: '0 1px 4px rgba(0,0,0,0.08), 0 4px 16px rgba(0,0,0,0.04)', borderRadius: 2, overflow: 'hidden' }}>
+                  {headerLayout && (
+                    <div style={{ padding: '0 72px', borderBottom: '1px solid #f0ede9' }}>
+                      <LayoutPreview layout={headerLayout} logo={projectLogo} doc={doc} isFooter={false} />
+                    </div>
+                  )}
+                  <div style={{ padding: '60px 72px', minHeight: 900 }}>
+                    <EditorContent editor={editor} />
+                  </div>
+                  {footerLayout && (
+                    <div style={{ padding: '0 72px', borderTop: '1px solid #f0ede9' }}>
+                      <LayoutPreview layout={footerLayout} logo={projectLogo} doc={doc} isFooter={true} />
+                    </div>
+                  )}
                 </div>
               </div>
               <div style={{ height: 48 }} />
