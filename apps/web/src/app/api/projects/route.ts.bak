@@ -15,8 +15,8 @@ export async function GET(req: NextRequest) {
       SELECT p.id, p.name, p.device_name, p.manufacturer_name, p.status,
              p.created_at, p.updated_at, u.name AS created_by_name,
              dl.name AS list_name,
-             COUNT(DISTINCT pd.id) AS total_docs,
-             COUNT(DISTINCT CASE WHEN pd.status = 'approved' THEN pd.id END) AS approved_docs
+             COUNT(DISTINCT pd.id) AS document_count,
+             COUNT(DISTINCT CASE WHEN pd.status = 'approved' THEN pd.id END) AS approved_count
       FROM projects p
       LEFT JOIN users u ON u.id = p.created_by
       LEFT JOIN document_lists dl ON dl.id = p.list_id
@@ -29,8 +29,8 @@ export async function GET(req: NextRequest) {
     projects = await query(`
       SELECT p.id, p.name, p.device_name, p.manufacturer_name, p.status,
              p.created_at, p.updated_at, dl.name AS list_name,
-             COUNT(DISTINCT pd.id) AS total_docs,
-             COUNT(DISTINCT CASE WHEN pd.status = 'approved' THEN pd.id END) AS approved_docs
+             COUNT(DISTINCT pd.id) AS document_count,
+             COUNT(DISTINCT CASE WHEN pd.status = 'approved' THEN pd.id END) AS approved_count
       FROM projects p
       JOIN project_members pm ON pm.project_id = p.id AND pm.user_id = $1::uuid
       LEFT JOIN document_lists dl ON dl.id = p.list_id

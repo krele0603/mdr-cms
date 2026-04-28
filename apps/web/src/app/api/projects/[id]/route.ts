@@ -30,10 +30,13 @@ export async function GET(
   if (!project) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   const docs = await query(`
-    SELECT id, annex, name, code, status, updated_at
-    FROM project_documents
-    WHERE project_id = $1::uuid
-    ORDER BY annex, name
+    SELECT pd.id, pd.annex, pd.name, pd.code, pd.status, pd.updated_at,
+           pd.revision, pd.color_flag, pd.tracker_comment,
+           pd.assigned_to, u.name AS assigned_name
+    FROM project_documents pd
+    LEFT JOIN users u ON u.id = pd.assigned_to
+    WHERE pd.project_id = $1::uuid
+    ORDER BY pd.annex, pd.name
   `, [params.id])
 
   return NextResponse.json({ project, docs })
@@ -54,7 +57,6 @@ export async function PATCH(
     'manufacturer_name', 'manufacturer_country',
     'manufacturer_contact', 'manufacturer_email',
     'status',
-    // Document settings
     'header_logo_url',
     'footer_show_version',
     'footer_show_date',
@@ -90,6 +92,5 @@ export async function DELETE(
   if (!project) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   await query(`DELETE FROM projects WHERE id = $1::uuid`, [params.id])
-
   return NextResponse.json({ ok: true })
 }
