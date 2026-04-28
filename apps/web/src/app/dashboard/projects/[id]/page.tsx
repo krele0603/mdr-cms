@@ -299,6 +299,11 @@ export default function ProjectDetailPage() {
 
       {/* Project data button */}
       <div style={{marginBottom:10,display:'flex',justifyContent:'flex-end'}}>
+        <a href={`/dashboard/projects/${id}/fmea`}
+          style={{display:'inline-flex',alignItems:'center',gap:6,height:32,padding:'0 14px',fontSize:12,background:'rgba(165,40,40,0.07)',border:'0.5px solid rgba(165,40,40,0.25)',borderRadius:8,color:'#8B1A1A',textDecoration:'none',fontWeight:500,marginRight:8}}>
+          <svg width='13' height='13' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round'><path d='M9 11l3 3L22 4'/><path d='M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11'/></svg>
+          Risk Analysis
+        </a>
         <a href={`/dashboard/projects/${id}/variables`}
           style={{display:'inline-flex',alignItems:'center',gap:6,height:32,padding:'0 14px',fontSize:12,background:'rgba(78,140,140,0.08)',border:'0.5px solid rgba(78,140,140,0.3)',borderRadius:8,color:'#2e5f5f',textDecoration:'none',fontWeight:500}}>
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
