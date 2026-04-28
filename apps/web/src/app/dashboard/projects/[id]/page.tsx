@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 
@@ -28,6 +28,14 @@ const ROLE_STYLES: Record<string, {bg:string;color:string;border:string}> = {
   client:     {bg:'#EAF3DE',color:'#27500A',border:'#97C459'},
 }
 
+const COLOR_FLAGS: Record<string, { bg: string; color: string; border: string; label: string; dot: string }> = {
+  green:  { bg: '#EAF3DE', color: '#27500A', border: '#97C459', label: 'Done',        dot: '#3B6D11' },
+  yellow: { bg: '#FFFBCC', color: '#7A6500', border: '#F5E24A', label: 'In progress', dot: '#F5D800' },
+  orange: { bg: '#FEF0E0', color: '#7A3B00', border: '#F5B97A', label: 'Not started', dot: '#E07820' },
+  red:    { bg: '#FCEBEB', color: '#A32D2D', border: '#F09595', label: 'Blocked',     dot: '#C0392B' },
+  none:   { bg: '#F1EFE8', color: '#5F5E5A', border: '#D3D1C7', label: 'No flag',     dot: '#ccc' },
+}
+
 interface Member {
   id: string
   user_id: string
@@ -45,6 +53,103 @@ interface User {
   role: string
 }
 
+interface TrackerDoc {
+  id: string
+  annex: string
+  name: string
+  code: string
+  status: string
+  revision: string | null
+  color_flag: string | null
+  tracker_comment: string | null
+  assigned_to: string | null
+  assigned_name: string | null
+}
+
+function EditableCell({ value, onSave, placeholder, mono = false }: {
+  value: string; onSave: (v: string) => void; placeholder?: string; mono?: boolean
+}) {
+  const [editing, setEditing] = useState(false)
+  const [val, setVal] = useState(value)
+  const ref = useRef<HTMLInputElement>(null)
+  useEffect(() => { if (editing) ref.current?.focus() }, [editing])
+  useEffect(() => { setVal(value) }, [value])
+  function commit() { setEditing(false); if (val !== value) onSave(val) }
+  if (editing) return (
+    <input ref={ref} value={val}
+      onChange={e => setVal(e.target.value)}
+      onBlur={commit}
+      onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') { setVal(value); setEditing(false) } }}
+      placeholder={placeholder}
+      style={{ width: '100%', padding: '3px 6px', fontSize: 12, border: '1px solid #185FA5', borderRadius: 4, outline: 'none', fontFamily: mono ? 'monospace' : 'inherit', background: '#fff' }}
+    />
+  )
+  return (
+    <div onClick={() => setEditing(true)} title="Click to edit"
+      style={{ fontSize: 12, color: val ? '#1a1a18' : '#bbb', cursor: 'text', minHeight: 20, padding: '2px 0', fontFamily: mono ? 'monospace' : 'inherit' }}>
+      {val || <span style={{ color: '#ccc', fontStyle: 'italic' }}>{placeholder || '—'}</span>}
+    </div>
+  )
+}
+
+function ColorPicker({ value, onSave }: { value: string | null; onSave: (v: string) => void }) {
+  const [open, setOpen] = useState(false)
+  const current = COLOR_FLAGS[value || 'none']
+  return (
+    <div style={{ position: 'relative' }}>
+      <div onClick={() => setOpen(o => !o)} title="Click to change flag"
+        style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', padding: '2px 7px', borderRadius: 12, background: current.bg, border: `0.5px solid ${current.border}`, fontSize: 11, color: current.color, whiteSpace: 'nowrap' as const, userSelect: 'none' as const }}>
+        <span style={{ width: 7, height: 7, borderRadius: '50%', background: current.dot, flexShrink: 0 }} />
+        {current.label}
+      </div>
+      {open && (
+        <div style={{ position: 'absolute', top: 26, left: 0, zIndex: 50, background: '#fff', border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.12)', overflow: 'hidden', minWidth: 130 }}>
+          {Object.entries(COLOR_FLAGS).map(([key, cf]) => (
+            <div key={key} onClick={() => { onSave(key === 'none' ? '' : key); setOpen(false) }}
+              style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 8, color: cf.color }}
+              onMouseEnter={e => (e.currentTarget.style.background = '#f8f7f4')}
+              onMouseLeave={e => (e.currentTarget.style.background = '#fff')}>
+              <span style={{ width: 8, height: 8, borderRadius: '50%', background: cf.dot, flexShrink: 0 }} />
+              {cf.label}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function AssignedPicker({ value, name, members, onSave }: {
+  value: string | null; name: string | null; members: Member[]; onSave: (id: string, name: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div style={{ position: 'relative' }}>
+      <div onClick={() => setOpen(o => !o)} title="Click to assign"
+        style={{ fontSize: 12, cursor: 'pointer', color: name ? '#1a1a18' : '#bbb', fontStyle: name ? 'normal' : 'italic', whiteSpace: 'nowrap' as const, userSelect: 'none' as const }}>
+        {name || 'Unassigned'}
+      </div>
+      {open && (
+        <div style={{ position: 'absolute', top: 22, left: 0, zIndex: 50, background: '#fff', border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.12)', overflow: 'hidden', minWidth: 180 }}>
+          <div onClick={() => { onSave('', ''); setOpen(false) }}
+            style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 12, color: '#9b9991', fontStyle: 'italic' }}
+            onMouseEnter={e => (e.currentTarget.style.background = '#f8f7f4')}
+            onMouseLeave={e => (e.currentTarget.style.background = '#fff')}>Unassigned</div>
+          {members.map(m => (
+            <div key={m.user_id} onClick={() => { onSave(m.user_id, m.name); setOpen(false) }}
+              style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 12, borderTop: '0.5px solid rgba(0,0,0,0.06)' }}
+              onMouseEnter={e => (e.currentTarget.style.background = '#f8f7f4')}
+              onMouseLeave={e => (e.currentTarget.style.background = '#fff')}>
+              <div style={{ fontWeight: 500 }}>{m.name}</div>
+              <div style={{ fontSize: 10, color: '#9b9991' }}>{m.user_role}</div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function ProjectDetailPage() {
   const params = useParams()
   const router = useRouter()
@@ -53,6 +158,7 @@ export default function ProjectDetailPage() {
   const [project, setProject] = useState<any>(null)
   const [docs, setDocs] = useState<any[]>([])
   const [members, setMembers] = useState<Member[]>([])
+  const [trackerDocs, setTrackerDocs] = useState<TrackerDoc[]>([])
   const [loading, setLoading] = useState(true)
   const [activeAnnex, setActiveAnnex] = useState('Annex I')
   const [editMode, setEditMode] = useState(false)
@@ -60,6 +166,8 @@ export default function ProjectDetailPage() {
   const [newDocName, setNewDocName] = useState('')
   const [newDocCode, setNewDocCode] = useState('')
   const [addingDoc, setAddingDoc] = useState(false)
+  const [trackerOpen, setTrackerOpen] = useState(false)
+  const [saving, setSaving] = useState<Record<string, boolean>>({})
 
   // Members
   const [showAddMember, setShowAddMember] = useState(false)
@@ -74,6 +182,12 @@ export default function ProjectDetailPage() {
     const data = await res.json()
     setProject(data.project)
     setDocs(data.docs)
+    setTrackerDocs(data.docs.map((d: any) => ({
+      id: d.id, annex: d.annex, name: d.name, code: d.code, status: d.status,
+      revision: d.revision || null, color_flag: d.color_flag || null,
+      tracker_comment: d.tracker_comment || null,
+      assigned_to: d.assigned_to || null, assigned_name: d.assigned_name || null,
+    })))
     setLoading(false)
   }
 
@@ -84,7 +198,6 @@ export default function ProjectDetailPage() {
 
   useEffect(() => { load(); loadMembers() }, [id])
 
-  // Search users
   useEffect(() => {
     if (!userSearch.trim()) { setUserResults([]); return }
     const t = setTimeout(async () => {
@@ -93,13 +206,10 @@ export default function ProjectDetailPage() {
         const res = await fetch(`/api/users?search=${encodeURIComponent(userSearch)}`)
         if (res.ok) {
           const all = await res.json()
-          // Filter out already members
           const memberIds = new Set(members.map(m => m.user_id))
           setUserResults(all.filter((u: User) => !memberIds.has(u.id)))
         }
-      } finally {
-        setSearchingUsers(false)
-      }
+      } finally { setSearchingUsers(false) }
     }, 300)
     return () => clearTimeout(t)
   }, [userSearch, members])
@@ -107,14 +217,10 @@ export default function ProjectDetailPage() {
   async function addMember(user: User) {
     setAddingMember(true)
     await fetch(`/api/projects/${id}/members`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ user_id: user.id, role: 'editor' }),
     })
-    setUserSearch('')
-    setUserResults([])
-    setShowAddMember(false)
-    setAddingMember(false)
+    setUserSearch(''); setUserResults([]); setShowAddMember(false); setAddingMember(false)
     loadMembers()
   }
 
@@ -126,8 +232,7 @@ export default function ProjectDetailPage() {
 
   async function updateDocStatus(docId: string, status: string) {
     await fetch(`/api/projects/${id}/documents/${docId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status }),
     })
     load()
@@ -143,24 +248,29 @@ export default function ProjectDetailPage() {
     if (!newDocName.trim() || !newDocCode.trim()) return
     setAddingDoc(true)
     await fetch(`/api/projects/${id}/documents`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ annex: activeAnnex, name: newDocName, code: newDocCode }),
     })
-    setNewDocName(''); setNewDocCode(''); setShowAddDoc(false)
-    setAddingDoc(false)
+    setNewDocName(''); setNewDocCode(''); setShowAddDoc(false); setAddingDoc(false)
     load()
   }
 
-
-
   async function updateProjectStatus(status: string) {
     await fetch(`/api/projects/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status }),
     })
     load()
+  }
+
+  async function patchDoc(docId: string, fields: Record<string, any>) {
+    setSaving(s => ({ ...s, [docId]: true }))
+    await fetch(`/api/projects/${id}/documents/${docId}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(fields),
+    })
+    setSaving(s => ({ ...s, [docId]: false }))
+    setTrackerDocs(prev => prev.map(d => d.id === docId ? { ...d, ...fields } : d))
   }
 
   if (loading) return <div style={{padding:40,textAlign:'center',color:'#9b9991',fontSize:13}}>Loading...</div>
@@ -174,6 +284,10 @@ export default function ProjectDetailPage() {
   const draft = docs.filter((d:any) => d.status === 'draft').length
   const pct = total > 0 ? Math.round((approved/total)*100) : 0
   const ps = PROJ_STATUS[project.status] || PROJ_STATUS.draft
+
+  const trackerByAnnex = ANNEXES.map(a => ({
+    annex: a, docs: trackerDocs.filter(d => d.annex === a),
+  })).filter(g => g.docs.length > 0)
 
   return (
     <div>
@@ -246,58 +360,33 @@ export default function ProjectDetailPage() {
       <div style={{background:'#fff',border:'0.5px solid rgba(0,0,0,0.1)',borderRadius:12,padding:'14px 20px',marginBottom:14}}>
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12}}>
           <div style={{fontSize:13,fontWeight:500}}>Members</div>
-          <button
-            onClick={() => setShowAddMember(v => !v)}
-            style={{height:26,padding:'0 10px',fontSize:11,background:'#185FA5',border:'none',borderRadius:6,color:'#fff',cursor:'pointer'}}
-          >+ Add member</button>
+          <button onClick={() => setShowAddMember(v => !v)}
+            style={{height:26,padding:'0 10px',fontSize:11,background:'#185FA5',border:'none',borderRadius:6,color:'#fff',cursor:'pointer'}}>
+            + Add member
+          </button>
         </div>
 
-        {/* Add member search */}
         {showAddMember && (
           <div style={{marginBottom:12,position:'relative'}}>
-            <input
-              value={userSearch}
-              onChange={e => setUserSearch(e.target.value)}
-              placeholder="Search by name or email…"
-              autoFocus
-              style={{
-                width:'100%',height:32,padding:'0 10px',fontSize:12,
-                border:'0.5px solid rgba(0,0,0,0.2)',borderRadius:8,
-                outline:'none',boxSizing:'border-box' as const,
-              }}
+            <input value={userSearch} onChange={e => setUserSearch(e.target.value)}
+              placeholder="Search by name or email…" autoFocus
+              style={{width:'100%',height:32,padding:'0 10px',fontSize:12,border:'0.5px solid rgba(0,0,0,0.2)',borderRadius:8,outline:'none',boxSizing:'border-box' as const}}
             />
-            {searchingUsers && (
-              <div style={{fontSize:11,color:'#9b9991',padding:'6px 0'}}>Searching…</div>
-            )}
+            {searchingUsers && <div style={{fontSize:11,color:'#9b9991',padding:'6px 0'}}>Searching…</div>}
             {userResults.length > 0 && (
-              <div style={{
-                position:'absolute',top:36,left:0,right:0,zIndex:20,
-                background:'#fff',border:'0.5px solid rgba(0,0,0,0.15)',
-                borderRadius:8,boxShadow:'0 4px 16px rgba(0,0,0,0.1)',overflow:'hidden',
-              }}>
+              <div style={{position:'absolute',top:36,left:0,right:0,zIndex:20,background:'#fff',border:'0.5px solid rgba(0,0,0,0.15)',borderRadius:8,boxShadow:'0 4px 16px rgba(0,0,0,0.1)',overflow:'hidden'}}>
                 {userResults.map(u => {
                   const rs = ROLE_STYLES[u.role] || ROLE_STYLES.client
                   return (
-                    <div
-                      key={u.id}
-                      onClick={() => !addingMember && addMember(u)}
-                      style={{
-                        padding:'9px 12px',cursor:'pointer',
-                        display:'flex',alignItems:'center',gap:10,
-                        borderBottom:'0.5px solid rgba(0,0,0,0.06)',
-                        background:'#fff',
-                      }}
+                    <div key={u.id} onClick={() => !addingMember && addMember(u)}
+                      style={{padding:'9px 12px',cursor:'pointer',display:'flex',alignItems:'center',gap:10,borderBottom:'0.5px solid rgba(0,0,0,0.06)',background:'#fff'}}
                       onMouseEnter={e => (e.currentTarget.style.background = '#f8f7f4')}
-                      onMouseLeave={e => (e.currentTarget.style.background = '#fff')}
-                    >
+                      onMouseLeave={e => (e.currentTarget.style.background = '#fff')}>
                       <div style={{flex:1,minWidth:0}}>
                         <div style={{fontSize:12,fontWeight:500}}>{u.name}</div>
                         <div style={{fontSize:11,color:'#9b9991'}}>{u.email}</div>
                       </div>
-                      <span style={{
-                        fontSize:10,padding:'1px 6px',borderRadius:3,
-                        background:rs.bg,color:rs.color,border:`0.5px solid ${rs.border}`,
-                      }}>{u.role}</span>
+                      <span style={{fontSize:10,padding:'1px 6px',borderRadius:3,background:rs.bg,color:rs.color,border:`0.5px solid ${rs.border}`}}>{u.role}</span>
                     </div>
                   )
                 })}
@@ -309,7 +398,6 @@ export default function ProjectDetailPage() {
           </div>
         )}
 
-        {/* Member list */}
         {members.length === 0 ? (
           <div style={{fontSize:12,color:'#9b9991'}}>No members yet. Add team members to collaborate on this project.</div>
         ) : (
@@ -317,28 +405,17 @@ export default function ProjectDetailPage() {
             {members.map(m => {
               const rs = ROLE_STYLES[m.user_role] || ROLE_STYLES.client
               return (
-                <div key={m.id} style={{
-                  display:'flex',alignItems:'center',gap:7,
-                  padding:'5px 10px',borderRadius:20,
-                  background:'#f8f7f4',border:'0.5px solid rgba(0,0,0,0.1)',
-                }}>
-                  <div style={{
-                    width:22,height:22,borderRadius:'50%',flexShrink:0,
-                    background:rs.bg,color:rs.color,border:`0.5px solid ${rs.border}`,
-                    display:'flex',alignItems:'center',justifyContent:'center',
-                    fontSize:9,fontWeight:600,
-                  }}>
+                <div key={m.id} style={{display:'flex',alignItems:'center',gap:7,padding:'5px 10px',borderRadius:20,background:'#f8f7f4',border:'0.5px solid rgba(0,0,0,0.1)'}}>
+                  <div style={{width:22,height:22,borderRadius:'50%',flexShrink:0,background:rs.bg,color:rs.color,border:`0.5px solid ${rs.border}`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:600}}>
                     {m.name.split(' ').map((n:string) => n[0]).join('').toUpperCase().slice(0,2)}
                   </div>
                   <div>
                     <div style={{fontSize:11,fontWeight:500}}>{m.name}</div>
                     <div style={{fontSize:10,color:'#9b9991'}}>{m.user_role}</div>
                   </div>
-                  <button
-                    onClick={() => removeMember(m.user_id)}
+                  <button onClick={() => removeMember(m.user_id)}
                     style={{background:'none',border:'none',color:'#9b9991',cursor:'pointer',fontSize:14,lineHeight:1,padding:'0 2px',marginLeft:2}}
-                    title="Remove member"
-                  >×</button>
+                    title="Remove member">×</button>
                 </div>
               )
             })}
@@ -347,8 +424,7 @@ export default function ProjectDetailPage() {
       </div>
 
       {/* Annex + docs grid */}
-      <div style={{display:'grid',gridTemplateColumns:'200px 1fr',gap:14}}>
-        {/* Annex list */}
+      <div style={{display:'grid',gridTemplateColumns:'200px 1fr',gap:14,marginBottom:14}}>
         <div style={{border:'0.5px solid rgba(0,0,0,0.1)',borderRadius:12,overflow:'hidden'}}>
           {ANNEXES.map(a => (
             <div key={a} onClick={() => {setActiveAnnex(a);setShowAddDoc(false)}} style={{
@@ -388,11 +464,7 @@ export default function ProjectDetailPage() {
             const s = DOC_STATUS[d.status] || DOC_STATUS.draft
             const isReview = d.status === 'review'
             return (
-              <div key={d.id} style={{
-                padding:'11px 14px',borderBottom:'0.5px solid rgba(0,0,0,0.06)',
-                display:'flex',alignItems:'center',gap:10,
-                background: isReview ? '#FFFBF5' : '#fff',
-              }}>
+              <div key={d.id} style={{padding:'11px 14px',borderBottom:'0.5px solid rgba(0,0,0,0.06)',display:'flex',alignItems:'center',gap:10,background:isReview?'#FFFBF5':'#fff'}}>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontSize:13,fontWeight:500,whiteSpace:'nowrap' as const,overflow:'hidden',textOverflow:'ellipsis'}}>{d.name}</div>
                   <div style={{fontSize:11,color:'#9b9991',fontFamily:'monospace',marginTop:1}}>{d.code}</div>
@@ -435,6 +507,94 @@ export default function ProjectDetailPage() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* ── Status Tracker ── */}
+      <div style={{ border: '0.5px solid rgba(0,0,0,0.1)', borderRadius: 12, overflow: 'hidden', background: '#fff' }}>
+        <div onClick={() => setTrackerOpen(o => !o)}
+          style={{ padding: '12px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: trackerOpen ? '#f8f7f4' : '#fff', borderBottom: trackerOpen ? '0.5px solid rgba(0,0,0,0.08)' : 'none', userSelect: 'none' as const }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ fontSize: 13, fontWeight: 500 }}>Document Status Tracker</div>
+            <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 20, fontWeight: 500, background: trackerOpen ? '#185FA5' : '#f1efe8', color: trackerOpen ? '#fff' : '#6b6a64', border: trackerOpen ? 'none' : '0.5px solid #D3D1C7' }}>
+              {trackerOpen ? 'ON' : 'OFF'}
+            </span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            {trackerOpen && (
+              <div style={{ display: 'flex', gap: 12, fontSize: 11, color: '#6b6a64' }}>
+                {Object.entries(COLOR_FLAGS).filter(([k]) => k !== 'none').map(([key, cf]) => {
+                  const count = trackerDocs.filter(d => d.color_flag === key).length
+                  return (
+                    <span key={key} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <span style={{ width: 7, height: 7, borderRadius: '50%', background: cf.dot }} />
+                      {cf.label}: {count}
+                    </span>
+                  )
+                })}
+              </div>
+            )}
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9b9991" strokeWidth="2" strokeLinecap="round"
+              style={{ transform: trackerOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          </div>
+        </div>
+
+        {trackerOpen && (
+          <div style={{ overflowX: 'auto' as const }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+              <thead>
+                <tr style={{ background: '#f8f7f4' }}>
+                  {['Annex', 'Document', 'Code', 'Status', 'Rev.', 'Flag', 'Comment', 'Assigned to'].map(h => (
+                    <th key={h} style={{ padding: '8px 12px', textAlign: 'left', fontSize: 11, fontWeight: 500, color: '#6b6a64', borderBottom: '0.5px solid rgba(0,0,0,0.08)', whiteSpace: 'nowrap' as const }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {trackerByAnnex.map(({ annex, docs: adocs }) => (
+                  adocs.map((d, i) => {
+                    const s = DOC_STATUS[d.status] || DOC_STATUS.draft
+                    const isSaving = saving[d.id]
+                    return (
+                      <tr key={d.id} style={{ borderBottom: '0.5px solid rgba(0,0,0,0.05)', background: isSaving ? '#fafffe' : '#fff' }}>
+                        <td style={{ padding: '9px 12px', verticalAlign: 'middle', fontSize: 11, whiteSpace: 'nowrap' as const, borderRight: '0.5px solid rgba(0,0,0,0.05)', color: i === 0 ? '#1a1a18' : 'transparent', fontWeight: i === 0 ? 500 : 400 }}>
+                          {i === 0 ? annex : ''}
+                        </td>
+                        <td style={{ padding: '9px 12px', verticalAlign: 'middle', maxWidth: 200 }}>
+                          <div style={{ fontSize: 12, fontWeight: 500, color: '#1a1a18', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }} title={d.name}>{d.name}</div>
+                        </td>
+                        <td style={{ padding: '9px 12px', verticalAlign: 'middle' }}>
+                          <span style={{ fontSize: 11, color: '#9b9991', fontFamily: 'monospace' }}>{d.code}</span>
+                        </td>
+                        <td style={{ padding: '9px 12px', verticalAlign: 'middle' }}>
+                          <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 4, background: s.bg, color: s.color, border: `0.5px solid ${s.border}`, whiteSpace: 'nowrap' as const }}>{s.label}</span>
+                        </td>
+                        <td style={{ padding: '9px 12px', verticalAlign: 'middle', minWidth: 60 }}>
+                          <EditableCell value={d.revision || ''} placeholder="1.0" mono onSave={v => patchDoc(d.id, { revision: v })} />
+                        </td>
+                        <td style={{ padding: '9px 12px', verticalAlign: 'middle' }}>
+                          <ColorPicker value={d.color_flag} onSave={v => patchDoc(d.id, { color_flag: v || null })} />
+                        </td>
+                        <td style={{ padding: '9px 12px', verticalAlign: 'middle', minWidth: 160 }}>
+                          <EditableCell value={d.tracker_comment || ''} placeholder="Add comment…" onSave={v => patchDoc(d.id, { tracker_comment: v })} />
+                        </td>
+                        <td style={{ padding: '9px 12px', verticalAlign: 'middle', minWidth: 130 }}>
+                          <AssignedPicker
+                            value={d.assigned_to} name={d.assigned_name} members={members}
+                            onSave={(uid, name) => {
+                              patchDoc(d.id, { assigned_to: uid || null })
+                              setTrackerDocs(prev => prev.map(td => td.id === d.id ? { ...td, assigned_to: uid || null, assigned_name: name || null } : td))
+                            }}
+                          />
+                        </td>
+                      </tr>
+                    )
+                  })
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   )

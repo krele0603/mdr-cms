@@ -24,7 +24,8 @@ const PROJ_STATUS: Record<string, { bg: string; color: string; border: string; l
 
 const COLOR_FLAGS: Record<string, { bg: string; color: string; border: string; label: string; dot: string }> = {
   green:  { bg: '#EAF3DE', color: '#27500A', border: '#97C459', label: 'Done',        dot: '#3B6D11' },
-  yellow: { bg: '#FAEEDA', color: '#633806', border: '#FAC775', label: 'Not started', dot: '#E8A020' },
+  yellow: { bg: '#FFFBCC', color: '#7A6500', border: '#F5E24A', label: 'In progress', dot: '#F5D800' },
+  orange: { bg: '#FEF0E0', color: '#7A3B00', border: '#F5B97A', label: 'Not started', dot: '#E07820' },
   red:    { bg: '#FCEBEB', color: '#A32D2D', border: '#F09595', label: 'Blocked',     dot: '#C0392B' },
   none:   { bg: '#F1EFE8', color: '#5F5E5A', border: '#D3D1C7', label: 'No flag',     dot: '#ccc' },
 }
