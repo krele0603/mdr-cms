@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
+import FilePanel from '@/components/FilePanel'
 
 const ANNEXES = ['Annex I','Annex II','Annex III','Annex IV','Annex V',
                  'Annex VI','Annex VII','Annex VIII','Annex IX','Annex X']
@@ -147,6 +148,8 @@ export default function ProjectDetailPage() {
   const [newDocCode, setNewDocCode] = useState('')
   const [addingDoc, setAddingDoc] = useState(false)
   const [trackerOpen, setTrackerOpen] = useState(false)
+  const [projectFiles, setProjectFiles] = useState<Record<string, string[]>>({}) // annex -> filenames
+  const [allProjectFiles, setAllProjectFiles] = useState<any[]>([])
   const [saving, setSaving] = useState<Record<string, boolean>>({})
   const [sessionRole, setSessionRole] = useState<string>('')
 
@@ -184,6 +187,20 @@ export default function ProjectDetailPage() {
     if (res.ok) setMembers(await res.json())
   }
 
+  async function loadFiles() {
+    const res = await fetch(`/api/projects/${id}/files`)
+    if (res.ok) {
+      const data = await res.json()
+      setAllProjectFiles(data.files || [])
+      const byAnnex: Record<string, string[]> = {}
+      for (const f of (data.files || [])) {
+        if (!byAnnex[f.annex]) byAnnex[f.annex] = []
+        byAnnex[f.annex].push(f.original_name)
+      }
+      setProjectFiles(byAnnex)
+    }
+  }
+
   async function loadTemplates() {
     setLoadingTemplates(true)
     const res = await fetch('/api/templates')
@@ -205,6 +222,7 @@ export default function ProjectDetailPage() {
   useEffect(() => {
     load()
     loadMembers()
+    loadFiles()
     fetch('/api/auth/session').then(r => r.json()).then(d => setSessionRole(d?.user?.role || ''))
   }, [id])
 
@@ -490,6 +508,31 @@ export default function ProjectDetailPage() {
             )
           })}
 
+          {/* Uploaded files for active annex */}
+          {(allProjectFiles.filter((f: any) => f.annex === activeAnnex)).map((f: any) => (
+            <div key={f.id} style={{padding:'11px 14px',borderBottom:'0.5px solid rgba(0,0,0,0.06)',display:'flex',alignItems:'center',gap:10,background:'#fff'}}>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:13,fontWeight:500,display:'flex',alignItems:'center',gap:6,whiteSpace:'nowrap' as const,overflow:'hidden',textOverflow:'ellipsis'}}>
+                  <span>📎</span>{f.original_name}
+                </div>
+                <div style={{display:'flex',alignItems:'center',gap:6,marginTop:3}}>
+                  <span style={{fontSize:11,color:'#9b9991'}}>{(f.file_size/1024/1024).toFixed(1)}MB</span>
+                  <span style={{fontSize:11,color:'#9b9991'}}>· {f.uploaded_by_name}</span>
+                </div>
+              </div>
+              <div style={{display:'flex',alignItems:'center',gap:6,flexShrink:0}}>
+                <a href={`/api/projects/${id}/files/${f.id}`} download={f.original_name}
+                  style={{height:26,padding:'0 10px',fontSize:11,background:'#E6F1FB',border:'0.5px solid #85B7EB',borderRadius:6,color:'#185FA5',textDecoration:'none',display:'inline-flex',alignItems:'center'}}>
+                  Download
+                </a>
+                {sessionRole === 'admin' && (
+                  <button onClick={async () => { if (!confirm(`Delete "${f.original_name}"?`)) return; await fetch(`/api/projects/${id}/files/${f.id}`,{method:'DELETE'}); loadFiles() }}
+                    style={{height:26,padding:'0 8px',fontSize:11,background:'#FCEBEB',border:'0.5px solid #F09595',borderRadius:6,color:'#A32D2D',cursor:'pointer'}}>Delete</button>
+                )}
+              </div>
+            </div>
+          ))}
+
           {activeAnnex === 'Annex III' && (
             <div style={{padding:'11px 14px',borderBottom:'0.5px solid rgba(0,0,0,0.06)',display:'flex',alignItems:'center',gap:10,background:'rgba(24,95,165,0.03)'}}>
               <div style={{flex:1,minWidth:0}}>
@@ -533,6 +576,8 @@ export default function ProjectDetailPage() {
               </div>
             </div>
           )}
+          <FilePanel projectId={id} annex={activeAnnex} sessionRole={sessionRole} />
+
           {showAddDoc && (
             <div style={{padding:'10px 14px',borderTop:'0.5px solid rgba(0,0,0,0.08)',background:'#f8f7f4',display:'flex',gap:8,alignItems:'center'}}>
               <input value={newDocName} onChange={e => setNewDocName(e.target.value)} placeholder="Document name"
@@ -590,7 +635,7 @@ export default function ProjectDetailPage() {
               </thead>
               <tbody>
                 {trackerByAnnex.map(({ annex, docs: adocs }) => (
-                  adocs.map((d, i) => {
+                  [...adocs.map((d, i) => {
                     const s = DOC_STATUS[d.status] || DOC_STATUS.draft
                     const isSaving = saving[d.id]
                     return (
@@ -627,8 +672,25 @@ export default function ProjectDetailPage() {
                         </td>
                       </tr>
                     )
-                  })
+                  }),
+                  ...allProjectFiles.filter((f: any) => f.annex === annex).map((f: any) => (
+                    <tr key={`file-${f.id}`} style={{ borderBottom: '0.5px solid rgba(0,0,0,0.05)', background: '#fafff8' }}>
+                      <td style={{ padding: '9px 12px', verticalAlign: 'middle', fontSize: 11, borderRight: '0.5px solid rgba(0,0,0,0.05)', color: 'transparent' }}></td>
+                      <td style={{ padding: '9px 12px', verticalAlign: 'middle', maxWidth: 200 }}>
+                        <div style={{ fontSize: 12, fontWeight: 500, color: '#185FA5', display: 'flex', alignItems: 'center', gap: 5 }}>
+                          <span>📎</span>
+                          <span style={{ whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }}>{f.original_name}</span>
+                        </div>
+                      </td>
+                      <td style={{ padding: '9px 12px', fontSize: 10, color: '#9b9991' }}>{(f.file_size/1024/1024).toFixed(1)}MB</td>
+                      <td style={{ padding: '9px 12px' }}>
+                        <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 3, background: '#E6F1FB', color: '#0C447C', border: '0.5px solid #85B7EB' }}>Uploaded</span>
+                      </td>
+                      <td colSpan={4} style={{ padding: '9px 12px', fontSize: 11, color: '#9b9991' }}>{f.uploaded_by_name}</td>
+                    </tr>
+                  ))]
                 ))}
+
               </tbody>
             </table>
           </div>

@@ -54,6 +54,8 @@ services:
     image: mdr-web
     container_name: mdr_web
     restart: unless-stopped
+    volumes:
+      - ./uploads:/data/uploads
     ports:
       - "3000:3000"
     environment:

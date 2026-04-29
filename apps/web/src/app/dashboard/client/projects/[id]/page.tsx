@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
+import FilePanel from '@/components/FilePanel'
 
 const ANNEXES = ['Annex I','Annex II','Annex III','Annex IV','Annex V',
                  'Annex VI','Annex VII','Annex VIII','Annex IX','Annex X']
@@ -30,9 +31,11 @@ export default function ClientProjectPage() {
   const [project, setProject] = useState<any>(null)
   const [docs, setDocs] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [sessionRole, setSessionRole] = useState('')
   const [activeAnnex, setActiveAnnex] = useState('Annex I')
 
   useEffect(() => {
+    fetch('/api/auth/session').then(r => r.json()).then(d => setSessionRole(d?.user?.role || ''))
     fetch(`/api/projects/${id}`)
       .then(r => r.ok ? r.json() : Promise.reject())
       .then(data => {
@@ -198,6 +201,8 @@ export default function ClientProjectPage() {
               </div>
             )
           })}
+
+          <FilePanel projectId={id} annex={activeAnnex} sessionRole={sessionRole} />
 
           {/* Annex III — Requirements */}
           {activeAnnex === 'Annex III' && (
