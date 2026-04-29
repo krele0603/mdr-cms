@@ -37,33 +37,13 @@ const COLOR_FLAGS: Record<string, { bg: string; color: string; border: string; l
 }
 
 interface Member {
-  id: string
-  user_id: string
-  name: string
-  email: string
-  user_role: string
-  role: string
-  joined_at: string
+  id: string; user_id: string; name: string; email: string; user_role: string; role: string; joined_at: string
 }
-
-interface User {
-  id: string
-  name: string
-  email: string
-  role: string
-}
-
+interface User { id: string; name: string; email: string; role: string }
 interface TrackerDoc {
-  id: string
-  annex: string
-  name: string
-  code: string
-  status: string
-  revision: string | null
-  color_flag: string | null
-  tracker_comment: string | null
-  assigned_to: string | null
-  assigned_name: string | null
+  id: string; annex: string; name: string; code: string; status: string
+  revision: string | null; color_flag: string | null; tracker_comment: string | null
+  assigned_to: string | null; assigned_name: string | null
 }
 
 function EditableCell({ value, onSave, placeholder, mono = false }: {
@@ -168,6 +148,14 @@ export default function ProjectDetailPage() {
   const [addingDoc, setAddingDoc] = useState(false)
   const [trackerOpen, setTrackerOpen] = useState(false)
   const [saving, setSaving] = useState<Record<string, boolean>>({})
+  const [sessionRole, setSessionRole] = useState<string>('')
+
+  // Template picker
+  const [showTemplatePicker, setShowTemplatePicker] = useState(false)
+  const [templates, setTemplates] = useState<any[]>([])
+  const [loadingTemplates, setLoadingTemplates] = useState(false)
+  const [addingTemplate, setAddingTemplate] = useState(false)
+  const [templateSearch, setTemplateSearch] = useState('')
 
   // Members
   const [showAddMember, setShowAddMember] = useState(false)
@@ -196,7 +184,29 @@ export default function ProjectDetailPage() {
     if (res.ok) setMembers(await res.json())
   }
 
-  useEffect(() => { load(); loadMembers() }, [id])
+  async function loadTemplates() {
+    setLoadingTemplates(true)
+    const res = await fetch('/api/templates')
+    if (res.ok) setTemplates(await res.json())
+    setLoadingTemplates(false)
+  }
+
+  async function addFromTemplate(template: any) {
+    setAddingTemplate(true)
+    const res = await fetch(`/api/projects/${id}/documents`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ annex: activeAnnex, name: template.name, code: template.tag_code, template_id: template.id }),
+    })
+    if (res.ok) { setShowTemplatePicker(false); setTemplateSearch(''); load() }
+    setAddingTemplate(false)
+  }
+
+  useEffect(() => {
+    load()
+    loadMembers()
+    fetch('/api/auth/session').then(r => r.json()).then(d => setSessionRole(d?.user?.role || ''))
+  }, [id])
 
   useEffect(() => {
     if (!userSearch.trim()) { setUserResults([]); return }
@@ -238,8 +248,8 @@ export default function ProjectDetailPage() {
     load()
   }
 
-  async function deleteDoc(docId: string) {
-    if (!confirm('Remove this document?')) return
+  async function deleteDoc(docId: string, docName: string) {
+    if (!confirm(`Permanently delete "${docName}" from this project?\n\nThis cannot be undone.`)) return
     await fetch(`/api/projects/${id}/documents/${docId}`, { method: 'DELETE' })
     load()
   }
@@ -284,10 +294,8 @@ export default function ProjectDetailPage() {
   const draft = docs.filter((d:any) => d.status === 'draft').length
   const pct = total > 0 ? Math.round((approved/total)*100) : 0
   const ps = PROJ_STATUS[project.status] || PROJ_STATUS.draft
-
-  const trackerByAnnex = ANNEXES.map(a => ({
-    annex: a, docs: trackerDocs.filter(d => d.annex === a),
-  })).filter(g => g.docs.length > 0)
+  const trackerByAnnex = ANNEXES.map(a => ({ annex: a, docs: trackerDocs.filter(d => d.annex === a) })).filter(g => g.docs.length > 0)
+  const filteredTemplates = templates.filter(t => !templateSearch || t.name.toLowerCase().includes(templateSearch.toLowerCase()) || t.tag_code.toLowerCase().includes(templateSearch.toLowerCase()))
 
   return (
     <div>
@@ -297,11 +305,11 @@ export default function ProjectDetailPage() {
         <span style={{color:'#1a1a18'}}>{project.name}</span>
       </div>
 
-      {/* Project data button */}
-      <div style={{marginBottom:10,display:'flex',justifyContent:'flex-end'}}>
+      {/* Top buttons */}
+      <div style={{marginBottom:10,display:'flex',justifyContent:'flex-end',gap:8}}>
         <a href={`/dashboard/projects/${id}/fmea`}
-          style={{display:'inline-flex',alignItems:'center',gap:6,height:32,padding:'0 14px',fontSize:12,background:'rgba(165,40,40,0.07)',border:'0.5px solid rgba(165,40,40,0.25)',borderRadius:8,color:'#8B1A1A',textDecoration:'none',fontWeight:500,marginRight:8}}>
-          <svg width='13' height='13' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round'><path d='M9 11l3 3L22 4'/><path d='M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11'/></svg>
+          style={{display:'inline-flex',alignItems:'center',gap:6,height:32,padding:'0 14px',fontSize:12,background:'rgba(165,40,40,0.07)',border:'0.5px solid rgba(165,40,40,0.25)',borderRadius:8,color:'#8B1A1A',textDecoration:'none',fontWeight:500}}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
           Risk Analysis
         </a>
         <a href={`/dashboard/projects/${id}/variables`}
@@ -337,7 +345,6 @@ export default function ProjectDetailPage() {
             </select>
           </div>
         </div>
-
         <div style={{display:'grid',gridTemplateColumns:'repeat(4,minmax(0,1fr))',gap:10,paddingTop:12,borderTop:'0.5px solid rgba(0,0,0,0.08)'}}>
           <div>
             <div style={{fontSize:11,color:'#6b6a64',marginBottom:2}}>Progress</div>
@@ -346,37 +353,22 @@ export default function ProjectDetailPage() {
               <div style={{width:`${pct}%`,height:'100%',background:pct===100?'#3B6D11':'#185FA5',borderRadius:2}}/>
             </div>
           </div>
-          <div>
-            <div style={{fontSize:11,color:'#6b6a64',marginBottom:2}}>Approved</div>
-            <div style={{fontSize:16,fontWeight:500,color:'#3B6D11'}}>{approved}</div>
-          </div>
-          <div>
-            <div style={{fontSize:11,color:'#6b6a64',marginBottom:2}}>In progress</div>
-            <div style={{fontSize:16,fontWeight:500,color:'#BA7517'}}>{inprog}</div>
-          </div>
-          <div>
-            <div style={{fontSize:11,color:'#6b6a64',marginBottom:2}}>Draft</div>
-            <div style={{fontSize:16,fontWeight:500}}>{draft}</div>
-          </div>
+          <div><div style={{fontSize:11,color:'#6b6a64',marginBottom:2}}>Approved</div><div style={{fontSize:16,fontWeight:500,color:'#3B6D11'}}>{approved}</div></div>
+          <div><div style={{fontSize:11,color:'#6b6a64',marginBottom:2}}>In progress</div><div style={{fontSize:16,fontWeight:500,color:'#BA7517'}}>{inprog}</div></div>
+          <div><div style={{fontSize:11,color:'#6b6a64',marginBottom:2}}>Draft</div><div style={{fontSize:16,fontWeight:500}}>{draft}</div></div>
         </div>
       </div>
 
-      {/* Members section */}
+      {/* Members */}
       <div style={{background:'#fff',border:'0.5px solid rgba(0,0,0,0.1)',borderRadius:12,padding:'14px 20px',marginBottom:14}}>
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12}}>
           <div style={{fontSize:13,fontWeight:500}}>Members</div>
-          <button onClick={() => setShowAddMember(v => !v)}
-            style={{height:26,padding:'0 10px',fontSize:11,background:'#185FA5',border:'none',borderRadius:6,color:'#fff',cursor:'pointer'}}>
-            + Add member
-          </button>
+          <button onClick={() => setShowAddMember(v => !v)} style={{height:26,padding:'0 10px',fontSize:11,background:'#185FA5',border:'none',borderRadius:6,color:'#fff',cursor:'pointer'}}>+ Add member</button>
         </div>
-
         {showAddMember && (
           <div style={{marginBottom:12,position:'relative'}}>
-            <input value={userSearch} onChange={e => setUserSearch(e.target.value)}
-              placeholder="Search by name or email…" autoFocus
-              style={{width:'100%',height:32,padding:'0 10px',fontSize:12,border:'0.5px solid rgba(0,0,0,0.2)',borderRadius:8,outline:'none',boxSizing:'border-box' as const}}
-            />
+            <input value={userSearch} onChange={e => setUserSearch(e.target.value)} placeholder="Search by name or email…" autoFocus
+              style={{width:'100%',height:32,padding:'0 10px',fontSize:12,border:'0.5px solid rgba(0,0,0,0.2)',borderRadius:8,outline:'none',boxSizing:'border-box' as const}} />
             {searchingUsers && <div style={{fontSize:11,color:'#9b9991',padding:'6px 0'}}>Searching…</div>}
             {userResults.length > 0 && (
               <div style={{position:'absolute',top:36,left:0,right:0,zIndex:20,background:'#fff',border:'0.5px solid rgba(0,0,0,0.15)',borderRadius:8,boxShadow:'0 4px 16px rgba(0,0,0,0.1)',overflow:'hidden'}}>
@@ -397,14 +389,11 @@ export default function ProjectDetailPage() {
                 })}
               </div>
             )}
-            {userSearch && !searchingUsers && userResults.length === 0 && (
-              <div style={{fontSize:11,color:'#9b9991',padding:'6px 0'}}>No users found.</div>
-            )}
+            {userSearch && !searchingUsers && userResults.length === 0 && <div style={{fontSize:11,color:'#9b9991',padding:'6px 0'}}>No users found.</div>}
           </div>
         )}
-
         {members.length === 0 ? (
-          <div style={{fontSize:12,color:'#9b9991'}}>No members yet. Add team members to collaborate on this project.</div>
+          <div style={{fontSize:12,color:'#9b9991'}}>No members yet.</div>
         ) : (
           <div style={{display:'flex',flexWrap:'wrap' as const,gap:8}}>
             {members.map(m => {
@@ -418,9 +407,7 @@ export default function ProjectDetailPage() {
                     <div style={{fontSize:11,fontWeight:500}}>{m.name}</div>
                     <div style={{fontSize:10,color:'#9b9991'}}>{m.user_role}</div>
                   </div>
-                  <button onClick={() => removeMember(m.user_id)}
-                    style={{background:'none',border:'none',color:'#9b9991',cursor:'pointer',fontSize:14,lineHeight:1,padding:'0 2px',marginLeft:2}}
-                    title="Remove member">×</button>
+                  <button onClick={() => removeMember(m.user_id)} style={{background:'none',border:'none',color:'#9b9991',cursor:'pointer',fontSize:14,lineHeight:1,padding:'0 2px',marginLeft:2}} title="Remove member">×</button>
                 </div>
               )
             })}
@@ -441,9 +428,7 @@ export default function ProjectDetailPage() {
               display:'flex',alignItems:'center',justifyContent:'space-between',
             }}>
               <span>{a}</span>
-              <span style={{fontSize:11,borderRadius:20,padding:'1px 6px',background:a===activeAnnex?'#B5D4F4':'#f1efe8',color:a===activeAnnex?'#0C447C':'#9b9991'}}>
-                {annexCounts[a]||0}
-              </span>
+              <span style={{fontSize:11,borderRadius:20,padding:'1px 6px',background:a===activeAnnex?'#B5D4F4':'#f1efe8',color:a===activeAnnex?'#0C447C':'#9b9991'}}>{annexCounts[a]||0}</span>
             </div>
           ))}
         </div>
@@ -455,9 +440,15 @@ export default function ProjectDetailPage() {
               <div style={{fontSize:12,color:'#6b6a64',marginTop:1}}>{annexDocs.length} document{annexDocs.length!==1?'s':''}</div>
             </div>
             {editMode && (
-              <button onClick={() => setShowAddDoc(true)} style={{height:28,padding:'0 10px',fontSize:12,background:'#185FA5',border:'none',borderRadius:6,color:'#fff',cursor:'pointer'}}>
-                + Add document
-              </button>
+              <div style={{display:'flex',gap:6}}>
+                <button onClick={() => { setShowTemplatePicker(true); loadTemplates() }}
+                  style={{height:28,padding:'0 10px',fontSize:12,background:'rgba(78,140,140,0.1)',border:'0.5px solid rgba(78,140,140,0.35)',borderRadius:6,color:'#2e5f5f',cursor:'pointer'}}>
+                  + From template
+                </button>
+                <button onClick={() => setShowAddDoc(true)} style={{height:28,padding:'0 10px',fontSize:12,background:'#185FA5',border:'none',borderRadius:6,color:'#fff',cursor:'pointer'}}>
+                  + Add document
+                </button>
+              </div>
             )}
           </div>
 
@@ -476,24 +467,31 @@ export default function ProjectDetailPage() {
                 </div>
                 <div style={{display:'flex',alignItems:'center',gap:6,flexShrink:0}}>
                   {editMode ? (
-                    <>
-                      <select value={d.status} onChange={e => updateDocStatus(d.id, e.target.value)}
-                        style={{height:26,padding:'0 6px',fontSize:11,border:'0.5px solid rgba(0,0,0,0.2)',borderRadius:6,background:'#fff'}}>
-                        <option value="draft">Draft</option>
-                        <option value="inprogress">In progress</option>
-                        <option value="review">In review</option>
-                        <option value="approved">Approved</option>
-                      </select>
-                      <button onClick={() => deleteDoc(d.id)} style={{height:26,padding:'0 8px',fontSize:11,background:'#FCEBEB',border:'0.5px solid #F09595',borderRadius:6,color:'#A32D2D',cursor:'pointer'}}>Remove</button>
-                    </>
+                    <select value={d.status} onChange={e => updateDocStatus(d.id, e.target.value)}
+                      style={{height:26,padding:'0 6px',fontSize:11,border:'0.5px solid rgba(0,0,0,0.2)',borderRadius:6,background:'#fff'}}>
+                      <option value="draft">Draft</option>
+                      <option value="inprogress">In progress</option>
+                      <option value="review">In review</option>
+                      <option value="approved">Approved</option>
+                    </select>
                   ) : (
                     <span style={{fontSize:11,padding:'2px 8px',borderRadius:4,background:s.bg,color:s.color,border:`0.5px solid ${s.border}`}}>
                       {isReview ? '⏳ ' : ''}{s.label}
                     </span>
                   )}
+                  {activeAnnex === 'Annex V' && (
+                    <Link href={`/dashboard/projects/${id}/fmea`}
+                      style={{height:26,padding:'0 8px',fontSize:11,background:'rgba(165,40,40,0.07)',border:'0.5px solid rgba(165,40,40,0.25)',borderRadius:6,color:'#8B1A1A',textDecoration:'none',display:'inline-flex',alignItems:'center',gap:4}}>
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+                      FMEA
+                    </Link>
+                  )}
                   <Link href={`/dashboard/projects/${id}/documents/${d.id}`} style={{height:26,padding:'0 10px',fontSize:11,background:'#E6F1FB',border:'0.5px solid #85B7EB',borderRadius:6,color:'#185FA5',textDecoration:'none',display:'inline-flex',alignItems:'center'}}>
                     Open
                   </Link>
+                  {sessionRole === 'admin' && (
+                    <button onClick={() => deleteDoc(d.id, d.name)} style={{height:26,padding:'0 8px',fontSize:11,background:'#FCEBEB',border:'0.5px solid #F09595',borderRadius:6,color:'#A32D2D',cursor:'pointer'}}>Delete</button>
+                  )}
                 </div>
               </div>
             )
@@ -514,7 +512,7 @@ export default function ProjectDetailPage() {
         </div>
       </div>
 
-      {/* ── Status Tracker ── */}
+      {/* Status Tracker */}
       <div style={{ border: '0.5px solid rgba(0,0,0,0.1)', borderRadius: 12, overflow: 'hidden', background: '#fff' }}>
         <div onClick={() => setTrackerOpen(o => !o)}
           style={{ padding: '12px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: trackerOpen ? '#f8f7f4' : '#fff', borderBottom: trackerOpen ? '0.5px solid rgba(0,0,0,0.08)' : 'none', userSelect: 'none' as const }}>
@@ -544,7 +542,6 @@ export default function ProjectDetailPage() {
             </svg>
           </div>
         </div>
-
         {trackerOpen && (
           <div style={{ overflowX: 'auto' as const }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
@@ -601,6 +598,47 @@ export default function ProjectDetailPage() {
           </div>
         )}
       </div>
+
+      {/* Template picker modal */}
+      {showTemplatePicker && (
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.35)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:100,padding:20}}
+          onClick={() => !addingTemplate && setShowTemplatePicker(false)}>
+          <div style={{background:'#fff',borderRadius:14,width:'100%',maxWidth:520,border:'0.5px solid rgba(0,0,0,0.12)',boxShadow:'0 8px 32px rgba(0,0,0,0.14)',overflow:'hidden',maxHeight:'80vh',display:'flex',flexDirection:'column' as const}}
+            onClick={e => e.stopPropagation()}>
+            <div style={{padding:'14px 20px',borderBottom:'0.5px solid rgba(0,0,0,0.08)',display:'flex',alignItems:'center',justifyContent:'space-between',flexShrink:0}}>
+              <div>
+                <div style={{fontSize:14,fontWeight:500}}>Add from template</div>
+                <div style={{fontSize:11,color:'#9b9991',marginTop:2}}>Adding to {activeAnnex}</div>
+              </div>
+              <button onClick={() => setShowTemplatePicker(false)} style={{background:'none',border:'none',fontSize:18,cursor:'pointer',color:'#6b6a64'}}>×</button>
+            </div>
+            <div style={{padding:'10px 16px',borderBottom:'0.5px solid rgba(0,0,0,0.06)',flexShrink:0}}>
+              <input value={templateSearch} onChange={e => setTemplateSearch(e.target.value)}
+                placeholder="Search templates…"
+                style={{width:'100%',padding:'7px 10px',fontSize:12,border:'0.5px solid rgba(0,0,0,0.2)',borderRadius:8,outline:'none',boxSizing:'border-box' as const}} />
+            </div>
+            <div style={{overflowY:'auto' as const,flex:1}}>
+              {loadingTemplates ? (
+                <div style={{padding:24,textAlign:'center',color:'#9b9991',fontSize:12}}>Loading templates…</div>
+              ) : filteredTemplates.length === 0 ? (
+                <div style={{padding:24,textAlign:'center',color:'#9b9991',fontSize:12}}>No templates found.</div>
+              ) : filteredTemplates.map((t: any) => (
+                <div key={t.id}
+                  onClick={() => !addingTemplate && addFromTemplate(t)}
+                  style={{padding:'10px 16px',borderBottom:'0.5px solid rgba(0,0,0,0.06)',cursor:'pointer',display:'flex',alignItems:'center',gap:10}}
+                  onMouseEnter={e => (e.currentTarget.style.background = '#f8f7f4')}
+                  onMouseLeave={e => (e.currentTarget.style.background = '#fff')}>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:12,fontWeight:500}}>{t.name}</div>
+                    <div style={{fontSize:10,color:'#9b9991',fontFamily:'monospace',marginTop:1}}>{t.tag_code}{t.annex ? ` · ${t.annex}` : ''}</div>
+                  </div>
+                  <span style={{fontSize:10,padding:'2px 6px',borderRadius:4,background:'#E6F1FB',color:'#0C447C',border:'0.5px solid #85B7EB',flexShrink:0}}>{t.status}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

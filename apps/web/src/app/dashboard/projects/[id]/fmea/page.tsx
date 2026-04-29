@@ -1,5 +1,6 @@
 'use client'
 import { useState, useEffect, useRef, useCallback } from 'react'
+import * as XLSX from 'xlsx'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 
@@ -280,6 +281,76 @@ export default function FmeaPage() {
     background: highlight ? 'rgba(24,95,165,0.03)' : '#fff',
   })
 
+
+  function exportToExcel() {
+    if (!fmea) return
+    const wb = XLSX.utils.book_new()
+
+    const ws1 = XLSX.utils.aoa_to_sheet([
+      ['Risk Analysis'],
+      ['Product', fmea.title, '', 'Record ID:', fmea.record_id],
+      ['Form code:', fmea.form_code, '', 'Revision', fmea.revision, 'Date', fmea.doc_date?.split('T')[0] || ''],
+      ['Analysis prepared by', fmea.prepared_by, '', 'Signature', ''],
+      ['Approved by:', fmea.approved_by, '', 'Signature', ''],
+      [], ['Revision history table:'], [],
+      ['Revision', 'Issue Date', 'Description', 'Author'],
+      ...revisions.map((r: any) => [r.revision, r.issue_date?.split('T')[0] || '', r.description, r.author]),
+    ])
+    ws1['!cols'] = [{wch:22},{wch:28},{wch:14},{wch:14},{wch:28},{wch:8},{wch:14}]
+    XLSX.utils.book_append_sheet(wb, ws1, 'Document Info')
+
+    const ws2 = XLSX.utils.aoa_to_sheet([
+      ['RISK MANAGEMENT TEAM'],
+      ['No', 'Name and Surname of Expert', 'Role', 'Organisation', 'Knowledge and experience'],
+      ...rmTeam.map((r: any, i: number) => [i+1, r.name, r.role, r.organisation, r.knowledge]),
+    ])
+    ws2['!cols'] = [{wch:5},{wch:28},{wch:22},{wch:22},{wch:40}]
+    XLSX.utils.book_append_sheet(wb, ws2, 'RM Team')
+
+    const ws3 = XLSX.utils.aoa_to_sheet([
+      ['ISO/TR 24971:2020 Annex A', 'Answer', 'Input to Risk Analysis?', 'RISK ID'],
+      ...questions.map((q: any) => {
+        const ans = answers[q.id] || {answer:'',input_to_ra:'',risk_ids:''}
+        return [`${q.code} - ${q.question}`, ans.answer, ans.input_to_ra, ans.risk_ids]
+      }),
+    ])
+    ws3['!cols'] = [{wch:60},{wch:35},{wch:18},{wch:14}]
+    XLSX.utils.book_append_sheet(wb, ws3, 'Annex A - Safety')
+
+    if (criteria) {
+      const ws4 = XLSX.utils.aoa_to_sheet([
+        ['', 'Negligible (1)', 'Minor (2)', 'Serious (3)', 'Critical (4)', 'Catastrophic (5)'],
+        ...([['Frequent',5],['Probable',4],['Occasional',3],['Remote',2],['Improbable',1]] as [string,number][]).map(([label,prob]) => [
+          `${label} (${prob})`,...[1,2,3,4,5].map(sev => { const r=prob*sev; return r<=criteria.r1_max?'R1':r<=criteria.r2_max?'R2':'R3' })
+        ]),
+        [],
+        ['Risk Class','Risk Level','Range','Acceptance Criteria'],
+        ['R1','Low Risk Level',`${criteria.r1_min}-${criteria.r1_max}`,'Acceptable'],
+        ['R2','Medium Risk Level',`${criteria.r2_min}-${criteria.r2_max}`,'Risk reduction required'],
+        ['R3','High Risk Level',`${criteria.r3_min}-${criteria.r3_max}`,'Not acceptable'],
+      ])
+      XLSX.utils.book_append_sheet(wb, ws4, 'Risk Criteria')
+    }
+
+    for (const sheet of sheets) {
+      const sheetData = [
+        [`Hazards related to ${sheet.name}`],
+        ['Hazard No','Hazard','Sequence of events','Hazardous situation','Harm','Prob.','Sev.','Risk Est.','Risk Level','Mitigation','Res.Prob.','Res.Sev.','Res.Est.','Res.Risk Level','Verification Doc','Residual Hazard','Benefit Analysis','New hazards?'],
+        ...sheet.rows.map((row: any, i: number) => {
+          const re = (row.probability && row.severity) ? row.probability * row.severity : null
+          const rre = (row.residual_probability && row.residual_severity) ? row.residual_probability * row.residual_severity : null
+          const rl = re && criteria ? (re<=criteria.r1_max?'LOW RISK':re<=criteria.r2_max?'MEDIUM RISK':'HIGH RISK') : ''
+          const rrl = rre && criteria ? (rre<=criteria.r1_max?'LOW RISK':rre<=criteria.r2_max?'MEDIUM RISK':'HIGH RISK') : ''
+          return [`${sheet.prefix}-${String(i+1).padStart(2,'0')}`,row.hazard,row.sequence_of_events,row.hazardous_situation,row.harm,row.probability,row.severity,re,rl,row.mitigation,row.residual_probability,row.residual_severity,rre,rrl,row.verification_document,row.residual_hazard,row.benefit_analysis,row.new_hazards]
+        }),
+      ]
+      const ws = XLSX.utils.aoa_to_sheet(sheetData)
+      XLSX.utils.book_append_sheet(wb, ws, sheet.name.slice(0,31))
+    }
+
+    XLSX.writeFile(wb, `Risk_Analysis_${fmea.revision}.xlsx`)
+  }
+
   if (loading) return (
     <div style={{ padding: 40, textAlign: 'center', color: '#9b9991', fontSize: 13 }}>Loading…</div>
   )
@@ -312,6 +383,15 @@ export default function FmeaPage() {
         <Link href={`/dashboard/projects/${projectId}`} style={{ color: '#9b9991', textDecoration: 'none' }}>Project</Link>
         <span>›</span>
         <span style={{ color: '#1a1a18' }}>Risk Analysis (FMEA)</span>
+      </div>
+
+      {/* Export button */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+        <button onClick={exportToExcel}
+          style={{ height: 30, padding: '0 14px', fontSize: 12, background: '#EAF3DE', border: '0.5px solid #97C459', borderRadius: 8, color: '#27500A', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontWeight: 500 }}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Export to Excel
+        </button>
       </div>
 
       {/* Tab bar */}
