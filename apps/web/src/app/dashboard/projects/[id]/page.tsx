@@ -490,6 +490,20 @@ export default function ProjectDetailPage() {
             )
           })}
 
+          {activeAnnex === 'Annex III' && (
+            <div style={{padding:'11px 14px',borderBottom:'0.5px solid rgba(0,0,0,0.06)',display:'flex',alignItems:'center',gap:10,background:'rgba(24,95,165,0.03)'}}>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:13,fontWeight:500,color:'#185FA5'}}>Requirements</div>
+                <div style={{fontSize:11,color:'#9b9991',fontFamily:'monospace',marginTop:1}}>REQUIREMENTS</div>
+              </div>
+              <div style={{display:'flex',alignItems:'center',gap:6,flexShrink:0}}>
+                <Link href={`/dashboard/projects/${id}/requirements`}
+                  style={{height:26,padding:'0 14px',fontSize:11,background:'#E6F1FB',border:'0.5px solid #85B7EB',borderRadius:6,color:'#185FA5',textDecoration:'none',display:'inline-flex',alignItems:'center',gap:4,fontWeight:500}}>
+                  Open Requirements
+                </Link>
+              </div>
+            </div>
+          )}
           {activeAnnex === 'Annex V' && (
             <div style={{padding:'11px 14px',borderBottom:'0.5px solid rgba(0,0,0,0.06)',display:'flex',alignItems:'center',gap:10,background:'rgba(165,40,40,0.03)'}}>
               <div style={{flex:1,minWidth:0}}>

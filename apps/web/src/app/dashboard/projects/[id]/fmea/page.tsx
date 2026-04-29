@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, useRef, useCallback } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 
@@ -18,10 +18,13 @@ interface FmeaRow {
   id: string; position: number
   hazard: string; sequence_of_events: string; hazardous_situation: string; harm: string
   probability: number | null; severity: number | null
-  mitigation: string
+  mitigation: string; mitigation_req_ids: string[]
   residual_probability: number | null; residual_severity: number | null
   verification_document: string; residual_hazard: string; benefit_analysis: string; new_hazards: string
 }
+interface ReqListInfo { id: string; type: string; name: string | null }
+interface ReqGroupInfo { id: string; name: string; prefix: string; reqs: { id: string; req_id: string; text: string }[] }
+interface ReqListFull extends ReqListInfo { groups: ReqGroupInfo[] }
 interface Sheet { id: string; name: string; prefix: string; position: number; rows: FmeaRow[] }
 
 // ── Helpers ────────────────────────────────────────────────
@@ -81,6 +84,158 @@ function Cell({ value, onSave, placeholder, mono = false, numeric = false, width
   )
 }
 
+// ── MitigationCell ──────────────────────────────────────────
+function MitigationCell({ reqIds, notes, reqLists, onSaveReqIds, onSaveNotes }: {
+  reqIds: string[]; notes: string
+  reqLists: ReqListFull[]
+  onSaveReqIds: (ids: string[]) => void
+  onSaveNotes: (v: string) => void
+}) {
+  const [step, setStep] = useState<'closed' | 'list' | 'browse'>('closed')
+  const [selectedList, setSelectedList] = useState<ReqListFull | null>(null)
+  const [search, setSearch] = useState('')
+  const dropRef = React.useRef<HTMLDivElement>(null)
+  const triggerRef = React.useRef<HTMLButtonElement>(null)
+  const [dropPos, setDropPos] = useState({ top: 0, left: 0 })
+
+  useEffect(() => {
+    if (step === 'closed') return
+    function handleMouseDown(e: MouseEvent) {
+      if (dropRef.current && dropRef.current.contains(e.target as Node)) return
+      if (triggerRef.current && triggerRef.current.contains(e.target as Node)) return
+      setStep('closed'); setSearch('')
+    }
+    document.addEventListener('mousedown', handleMouseDown)
+    return () => document.removeEventListener('mousedown', handleMouseDown)
+  }, [step])
+
+  function handleOpen() {
+    if (triggerRef.current) {
+      const rect = triggerRef.current.getBoundingClientRect()
+      const spaceBelow = window.innerHeight - rect.bottom
+      const flipUp = spaceBelow < 300
+      setDropPos({
+        top: flipUp ? rect.top + window.scrollY - 280 : rect.bottom + window.scrollY + 4,
+        left: rect.left + window.scrollX,
+      })
+    }
+    if (reqLists.length === 1) { setSelectedList(reqLists[0]); setStep('browse') }
+    else setStep(step === 'closed' ? 'list' : 'closed')
+  }
+
+  function toggleReq(reqId: string) {
+    const next = reqIds.includes(reqId) ? reqIds.filter(r => r !== reqId) : [...reqIds, reqId]
+    onSaveReqIds(next)
+  }
+
+  function removeReq(reqId: string) {
+    onSaveReqIds(reqIds.filter(r => r !== reqId))
+  }
+
+  const allReqs = selectedList?.groups.flatMap(g =>
+    g.reqs.filter(r => !search || r.req_id.toLowerCase().includes(search.toLowerCase()) || r.text.toLowerCase().includes(search.toLowerCase()))
+      .map(r => ({ ...r, groupName: g.name }))
+  ) || []
+
+  return (
+    <div>
+      {/* Picker row */}
+      <div style={{ display: 'flex', flexWrap: 'wrap' as const, alignItems: 'center', gap: 4, marginBottom: reqIds.length > 0 ? 6 : 4 }}>
+        <button ref={triggerRef} onClick={handleOpen}
+          style={{ height: 20, padding: '0 7px', fontSize: 10, background: '#E6F1FB', border: '0.5px solid #85B7EB', borderRadius: 4, color: '#185FA5', cursor: 'pointer', whiteSpace: 'nowrap' as const }}>
+          + Link req
+        </button>
+        {reqIds.map(rid => {
+          let reqText = ''
+          for (const l of reqLists) {
+            for (const g of l.groups) {
+              const found = g.reqs.find((r: any) => r.req_id === rid)
+              if (found) { reqText = found.text; break }
+            }
+            if (reqText) break
+          }
+          return (
+            <div key={rid} style={{ display: 'flex', alignItems: 'flex-start', gap: 4, width: '100%', marginBottom: 2 }}>
+              <span style={{ fontSize: 10, padding: '1px 5px', background: '#EEEDFE', border: '0.5px solid #AFA9EC', borderRadius: 3, color: '#3C3489', fontFamily: 'monospace', whiteSpace: 'nowrap' as const, flexShrink: 0 }}>{rid}</span>
+              {reqText && <span style={{ fontSize: 10, color: '#5F5E5A', lineHeight: 1.4, flex: 1 }}>{reqText.slice(0, 80)}{reqText.length > 80 ? '…' : ''}</span>}
+              <span onClick={() => removeReq(rid)} style={{ cursor: 'pointer', color: '#9b9991', fontSize: 12, lineHeight: 1, flexShrink: 0 }}>×</span>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Dropdown */}
+      {step !== 'closed' && (
+        <div ref={dropRef} style={{ position: 'fixed', top: dropPos.top, left: dropPos.left, zIndex: 9999, background: '#fff', border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.14)', width: 300, maxHeight: 280, display: 'flex', flexDirection: 'column' as const }}>
+          {step === 'list' && (
+            <div style={{ padding: 10 }}>
+              <div style={{ fontSize: 11, fontWeight: 500, color: '#6b6a64', marginBottom: 8 }}>Select requirements list</div>
+              {reqLists.map(l => (
+                <div key={l.id} onClick={() => { setSelectedList(l); setStep('browse') }}
+                  style={{ padding: '8px 10px', borderRadius: 6, cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, border: '0.5px solid rgba(0,0,0,0.1)' }}
+                  onMouseEnter={e => (e.currentTarget.style.background = '#f8f7f4')}
+                  onMouseLeave={e => (e.currentTarget.style.background = '#fff')}>
+                  <span style={{ fontSize: 10, padding: '1px 5px', borderRadius: 3, background: l.type === 'system' ? '#EEEDFE' : '#E6F1FB', color: l.type === 'system' ? '#3C3489' : '#0C447C' }}>
+                    {l.type === 'system' ? 'SYS' : 'SW'}
+                  </span>
+                  {l.type === 'system' ? 'System Requirements' : l.name}
+                </div>
+              ))}
+              {reqLists.length === 0 && <div style={{ fontSize: 11, color: '#9b9991', fontStyle: 'italic' }}>No requirements lists found for this project.</div>}
+            </div>
+          )}
+          {step === 'browse' && selectedList && (
+            <>
+              <div style={{ padding: '8px 10px', borderBottom: '0.5px solid rgba(0,0,0,0.08)', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                {reqLists.length > 1 && (
+                  <button onClick={() => { setStep('list'); setSearch('') }}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9b9991', fontSize: 14, padding: '0 4px 0 0' }}>‹</button>
+                )}
+                <span style={{ fontSize: 11, fontWeight: 500, flex: 1 }}>{selectedList.type === 'system' ? 'System Requirements' : selectedList.name}</span>
+              </div>
+              <div style={{ padding: '6px 8px', borderBottom: '0.5px solid rgba(0,0,0,0.06)', flexShrink: 0 }}>
+                <input value={search} onChange={e => setSearch(e.target.value)}
+                  placeholder="Search req ID or text…" autoFocus
+                  style={{ width: '100%', padding: '4px 8px', fontSize: 11, border: '0.5px solid rgba(0,0,0,0.2)', borderRadius: 5, outline: 'none', boxSizing: 'border-box' as const }} />
+              </div>
+              <div style={{ overflowY: 'auto' as const, flex: 1 }}>
+                {selectedList.groups.map(g => {
+                  const filtered = g.reqs.filter(r => !search || r.req_id.toLowerCase().includes(search.toLowerCase()) || r.text.toLowerCase().includes(search.toLowerCase()))
+                  if (filtered.length === 0) return null
+                  return (
+                    <div key={g.id}>
+                      <div style={{ padding: '4px 10px', fontSize: 9, fontWeight: 600, color: '#9b9991', background: '#f8f7f4', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>{g.name}</div>
+                      {filtered.map(r => (
+                        <div key={r.id} onClick={() => toggleReq(r.req_id)}
+                          style={{ padding: '6px 10px', cursor: 'pointer', display: 'flex', alignItems: 'flex-start', gap: 8, borderBottom: '0.5px solid rgba(0,0,0,0.04)', background: reqIds.includes(r.req_id) ? '#F0F7FF' : '#fff' }}
+                          onMouseEnter={e => { if (!reqIds.includes(r.req_id)) e.currentTarget.style.background = '#f8f7f4' }}
+                          onMouseLeave={e => { e.currentTarget.style.background = reqIds.includes(r.req_id) ? '#F0F7FF' : '#fff' }}>
+                          <div style={{ width: 12, height: 12, borderRadius: 3, border: `1.5px solid ${reqIds.includes(r.req_id) ? '#185FA5' : '#ccc'}`, background: reqIds.includes(r.req_id) ? '#185FA5' : '#fff', flexShrink: 0, marginTop: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            {reqIds.includes(r.req_id) && <span style={{ color: '#fff', fontSize: 9, lineHeight: 1 }}>✓</span>}
+                          </div>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontSize: 10, fontFamily: 'monospace', fontWeight: 600, color: '#185FA5' }}>{r.req_id}</div>
+                            <div style={{ fontSize: 10, color: '#5F5E5A', lineHeight: 1.4 }}>{r.text.slice(0, 80)}{r.text.length > 80 ? '…' : ''}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )
+                })}
+                {allReqs.length === 0 && <div style={{ padding: 16, textAlign: 'center', fontSize: 11, color: '#9b9991', fontStyle: 'italic' }}>No requirements found.</div>}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Notes row */}
+      <Cell value={notes} onSave={onSaveNotes} placeholder="Additional notes…" />
+    </div>
+  )
+}
+
+
 // ── Main page ──────────────────────────────────────────────
 const TABS = ['Document Info', 'RM Team', 'Annex A', 'Risk Criteria']
 
@@ -100,6 +255,33 @@ export default function FmeaPage() {
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
   const [activeSheetId, setActiveSheetId] = useState<string | null>(null)
+  const [reqLists, setReqLists] = useState<ReqListFull[]>([])
+
+  // Column widths for FMEA table (per sheet, keyed by sheetId)
+  const [colWidths, setColWidths] = useState<number[]>([
+    70, 120, 160, 160, 160, 50, 50, 65, 100, 220, 65, 65, 80, 120, 140, 160, 160, 110, 40
+  ])
+  const resizingCol = React.useRef<number | null>(null)
+  const resizingStartX = React.useRef<number>(0)
+  const resizingStartW = React.useRef<number>(0)
+
+  function startResize(e: React.MouseEvent, colIdx: number) {
+    e.preventDefault()
+    e.stopPropagation()
+    const startX = e.clientX
+    const startW = colWidths[colIdx]
+    function onMove(ev: MouseEvent) {
+      const delta = ev.clientX - startX
+      const newW = Math.max(40, startW + delta)
+      setColWidths(prev => { const next = [...prev]; next[colIdx] = newW; return next })
+    }
+    function onUp() {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }
 
   // New sheet modal
   const [showNewSheet, setShowNewSheet] = useState(false)
@@ -126,7 +308,12 @@ export default function FmeaPage() {
     setLoading(false)
   }
 
-  useEffect(() => { load() }, [projectId])
+  async function loadReqLists() {
+    const res = await fetch(`/api/projects/${projectId}/requirements`)
+    if (res.ok) { const d = await res.json(); setReqLists(d.lists || []) }
+  }
+
+  useEffect(() => { load(); loadReqLists() }, [projectId])
 
   async function createFmea() {
     setCreating(true)
@@ -242,6 +429,7 @@ export default function FmeaPage() {
     })
     if (res.ok) {
       const row = await res.json()
+      if (!row.mitigation_req_ids) row.mitigation_req_ids = []
       setSheets(prev => prev.map(s => s.id === sheetId ? { ...s, rows: [...s.rows, row] } : s))
     }
   }
@@ -271,6 +459,28 @@ export default function FmeaPage() {
       borderRight: '0.5px solid rgba(0,0,0,0.06)', whiteSpace: 'nowrap' as const,
       ...(width ? { width, minWidth: width } : {}),
     }}>{label}</th>
+  )
+
+  // Resizable header cell for FMEA table
+  const rHeaderCell = (label: string, colIdx: number) => (
+    <th key={colIdx} style={{
+      padding: '7px 8px', textAlign: 'left', fontSize: 10, fontWeight: 600,
+      color: '#5F5E5A', background: '#f8f7f4', borderBottom: '1px solid rgba(0,0,0,0.1)',
+      whiteSpace: 'nowrap' as const, position: 'relative' as const,
+      width: colWidths[colIdx], minWidth: 40, userSelect: 'none' as const,
+    }}>
+      {label}
+      <div
+        onMouseDown={e => startResize(e, colIdx)}
+        style={{
+          position: 'absolute', right: 0, top: 0, bottom: 0, width: 6,
+          cursor: 'col-resize', zIndex: 1,
+          background: 'transparent',
+        }}
+        onMouseEnter={e => (e.currentTarget.style.background = 'rgba(24,95,165,0.3)')}
+        onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+      />
+    </th>
   )
 
   const tdStyle = (highlight?: boolean): React.CSSProperties => ({
@@ -734,7 +944,11 @@ ${prob}`
           `${sheet.prefix}-${String(i+1).padStart(2,'0')}`,
           row.hazard, row.sequence_of_events, row.hazardous_situation, row.harm,
           row.probability, row.severity, re, rl,
-          row.mitigation,
+          [(row.mitigation_req_ids||[]).map((rid: string) => {
+            let text = ''
+            for (const l of reqLists) { for (const g of l.groups) { const f = g.reqs.find((r: any) => r.req_id === rid); if (f) { text = f.text; break } } if (text) break }
+            return text ? `${rid}: ${text}` : rid
+          }).join('\n'), row.mitigation].filter(Boolean).join('\n'),
           row.residual_probability, row.residual_severity, rre, rrl,
           row.verification_document, row.residual_hazard, row.benefit_analysis, row.new_hazards
         ]
@@ -1208,6 +1422,9 @@ ${prob}`
 
           <div style={{ overflowX: 'auto' as const }}>
             <table style={{ borderCollapse: 'collapse', fontSize: 11 }}>
+              <colgroup>
+                {colWidths.map((w, i) => <col key={i} style={{ width: w, minWidth: w }} />)}
+              </colgroup>
               <thead>
                 <tr>
                   <th colSpan={9} style={{ padding: '6px 10px', background: '#B8CCE4', fontSize: 11, fontWeight: 600, textAlign: 'center', borderBottom: '1px solid rgba(0,0,0,0.1)', borderRight: '2px solid rgba(0,0,0,0.1)' }}>
@@ -1222,25 +1439,7 @@ ${prob}`
                   <th style={{ background: '#f8f7f4', borderBottom: '1px solid rgba(0,0,0,0.1)' }} />
                 </tr>
                 <tr>
-                  {headerCell('Hazard No', 70)}
-                  {headerCell('Hazard', 120)}
-                  {headerCell('Foreseeable sequence of events (cause)', 160)}
-                  {headerCell('Hazardous situation', 160)}
-                  {headerCell('Harm to patient / user', 160)}
-                  {headerCell('Prob.', 50)}
-                  {headerCell('Sev.', 50)}
-                  {headerCell('Risk Est.', 65)}
-                  {headerCell('Risk Level', 90)}
-                  {headerCell('Risk Mitigation measure', 200)}
-                  {headerCell('Res. Prob.', 65)}
-                  {headerCell('Res. Sev.', 65)}
-                  {headerCell('Mitig. Risk Est.', 80)}
-                  {headerCell('Residual Risk Level', 110)}
-                  {headerCell('Related verification Doc.', 140)}
-                  {headerCell('Residual Hazard (Yes/No) + Rationale', 160)}
-                  {headerCell('Benefit / Residual Risk Analysis', 160)}
-                  {headerCell('New hazards?', 110)}
-                  {headerCell('', 40)}
+                  {['Hazard No','Hazard','Foreseeable sequence of events (cause)','Hazardous situation','Harm to patient / user','Prob.','Sev.','Risk Est.','Risk Level','Risk Mitigation measure','Res. Prob.','Res. Sev.','Mitig. Risk Est.','Residual Risk Level','Related verification Doc.','Residual Hazard (Yes/No) + Rationale','Benefit / Residual Risk Analysis','New hazards?',''].map((h, i) => rHeaderCell(h, i))}
                 </tr>
               </thead>
               <tbody>
@@ -1276,7 +1475,15 @@ ${prob}`
                           </span>
                         ) : <span style={{ color: '#ccc' }}>—</span>}
                       </td>
-                      <td style={tdStyle()}><Cell value={row.mitigation} onSave={v => patchFmeaRow(activeSheet.id, row.id, 'mitigation', v)} placeholder="Mitigation measures…" /></td>
+                      <td style={tdStyle()}>
+                        <MitigationCell
+                          reqIds={row.mitigation_req_ids || []}
+                          notes={row.mitigation}
+                          reqLists={reqLists}
+                          onSaveReqIds={ids => patchFmeaRow(activeSheet.id, row.id, 'mitigation_req_ids', ids)}
+                          onSaveNotes={v => patchFmeaRow(activeSheet.id, row.id, 'mitigation', v)}
+                        />
+                      </td>
                       <td style={{ ...tdStyle(), textAlign: 'center' }}>
                         <Cell value={row.residual_probability ? String(row.residual_probability) : ''} onSave={v => patchFmeaRow(activeSheet.id, row.id, 'residual_probability', v ? parseInt(v) : null)} placeholder="1–5" numeric />
                       </td>

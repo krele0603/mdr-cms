@@ -37,15 +37,23 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   // body = { id, field, value }
   const allowed = [
     'hazard', 'sequence_of_events', 'hazardous_situation', 'harm',
-    'probability', 'severity', 'mitigation',
+    'probability', 'severity', 'mitigation', 'mitigation_req_ids',
     'residual_probability', 'residual_severity',
     'verification_document', 'residual_hazard', 'benefit_analysis', 'new_hazards',
   ]
   if (!allowed.includes(body.field)) return NextResponse.json({ error: 'Invalid field' }, { status: 400 })
-  await query(
-    `UPDATE fmea_rows SET ${body.field} = $1 WHERE id = $2::uuid`,
-    [body.value, body.id]
-  )
+  // Handle array fields
+  if (body.field === 'mitigation_req_ids') {
+    await query(
+      `UPDATE fmea_rows SET mitigation_req_ids = $1::text[] WHERE id = $2::uuid`,
+      [body.value, body.id]
+    )
+  } else {
+    await query(
+      `UPDATE fmea_rows SET ${body.field} = $1 WHERE id = $2::uuid`,
+      [body.value, body.id]
+    )
+  }
   return NextResponse.json({ ok: true })
 }
 
