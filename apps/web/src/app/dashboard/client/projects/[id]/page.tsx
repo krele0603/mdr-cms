@@ -404,35 +404,14 @@ export default function ClientProjectPage() {
                     whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis',
                     color: isApproved ? '#27500A' : '#1a1a18',
                   }}>{d.name}</div>
-                  <div style={{ fontSize: 11, color: '#9b9991', fontFamily: 'monospace', marginTop: 1 }}>{d.code}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3 }}>
+                    <span style={{ fontSize: 11, color: '#9b9991', fontFamily: 'monospace' }}>{d.code}</span>
+                    <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 3, background: s.bg, color: s.color, border: `0.5px solid ${s.border}`, fontWeight: 500 }}>{s.label}</span>
+                  </div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-                  <span style={{
-                    fontSize: 11, padding: '2px 8px', borderRadius: 4,
-                    background: s.bg, color: s.color, border: `0.5px solid ${s.border}`,
-                  }}>{s.label}</span>
-                  {activeAnnex === 'Annex V' && (
-                    <Link
-                      href={`/dashboard/projects/${id}/fmea`}
-                      style={{
-                        height: 26, padding: '0 8px', fontSize: 11,
-                        background: 'rgba(165,40,40,0.07)',
-                        border: '0.5px solid rgba(165,40,40,0.25)',
-                        borderRadius: 6, color: '#8B1A1A',
-                        textDecoration: 'none',
-                        display: 'inline-flex', alignItems: 'center', gap: 4,
-                      }}
-                    >
-                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
-                      FMEA
-                    </Link>
-                  )}
-                  {activeAnnex === 'Annex V' && (
-                    <Link href={`/dashboard/projects/${id}/fmea`}
-                      style={{height:26,padding:'0 8px',fontSize:11,background:'rgba(165,40,40,0.07)',border:'0.5px solid rgba(165,40,40,0.25)',borderRadius:6,color:'#8B1A1A',textDecoration:'none',display:'inline-flex',alignItems:'center',gap:4}}>
-                      FMEA
-                    </Link>
-                  )}
+
+
                   <Link
                     href={`/dashboard/projects/${id}/documents/${d.id}`}
                     style={{

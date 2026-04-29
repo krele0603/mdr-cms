@@ -463,7 +463,10 @@ export default function ProjectDetailPage() {
               <div key={d.id} style={{padding:'11px 14px',borderBottom:'0.5px solid rgba(0,0,0,0.06)',display:'flex',alignItems:'center',gap:10,background:isReview?'#FFFBF5':'#fff'}}>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontSize:13,fontWeight:500,whiteSpace:'nowrap' as const,overflow:'hidden',textOverflow:'ellipsis'}}>{d.name}</div>
-                  <div style={{fontSize:11,color:'#9b9991',fontFamily:'monospace',marginTop:1}}>{d.code}</div>
+                  <div style={{display:'flex',alignItems:'center',gap:6,marginTop:3}}>
+                    <span style={{fontSize:11,color:'#9b9991',fontFamily:'monospace'}}>{d.code}</span>
+                    {!editMode && <span style={{fontSize:10,padding:'1px 6px',borderRadius:3,background:s.bg,color:s.color,border:`0.5px solid ${s.border}`,fontWeight:500}}>{isReview ? '⏳ ' : ''}{s.label}</span>}
+                  </div>
                 </div>
                 <div style={{display:'flex',alignItems:'center',gap:6,flexShrink:0}}>
                   {editMode ? (
@@ -474,18 +477,8 @@ export default function ProjectDetailPage() {
                       <option value="review">In review</option>
                       <option value="approved">Approved</option>
                     </select>
-                  ) : (
-                    <span style={{fontSize:11,padding:'2px 8px',borderRadius:4,background:s.bg,color:s.color,border:`0.5px solid ${s.border}`}}>
-                      {isReview ? '⏳ ' : ''}{s.label}
-                    </span>
-                  )}
-                  {activeAnnex === 'Annex V' && (
-                    <Link href={`/dashboard/projects/${id}/fmea`}
-                      style={{height:26,padding:'0 8px',fontSize:11,background:'rgba(165,40,40,0.07)',border:'0.5px solid rgba(165,40,40,0.25)',borderRadius:6,color:'#8B1A1A',textDecoration:'none',display:'inline-flex',alignItems:'center',gap:4}}>
-                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
-                      FMEA
-                    </Link>
-                  )}
+                  ) : null}
+
                   <Link href={`/dashboard/projects/${id}/documents/${d.id}`} style={{height:26,padding:'0 10px',fontSize:11,background:'#E6F1FB',border:'0.5px solid #85B7EB',borderRadius:6,color:'#185FA5',textDecoration:'none',display:'inline-flex',alignItems:'center'}}>
                     Open
                   </Link>
@@ -497,6 +490,21 @@ export default function ProjectDetailPage() {
             )
           })}
 
+          {activeAnnex === 'Annex V' && (
+            <div style={{padding:'11px 14px',borderBottom:'0.5px solid rgba(0,0,0,0.06)',display:'flex',alignItems:'center',gap:10,background:'rgba(165,40,40,0.03)'}}>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:13,fontWeight:500,color:'#8B1A1A'}}>Risk Analysis (FMEA)</div>
+                <div style={{fontSize:11,color:'#9b9991',fontFamily:'monospace',marginTop:1}}>FMEA</div>
+              </div>
+              <div style={{display:'flex',alignItems:'center',gap:6,flexShrink:0}}>
+                <Link href={`/dashboard/projects/${id}/fmea`}
+                  style={{height:26,padding:'0 14px',fontSize:11,background:'rgba(165,40,40,0.07)',border:'0.5px solid rgba(165,40,40,0.25)',borderRadius:6,color:'#8B1A1A',textDecoration:'none',display:'inline-flex',alignItems:'center',gap:4,fontWeight:500}}>
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+                  Open FMEA
+                </Link>
+              </div>
+            </div>
+          )}
           {showAddDoc && (
             <div style={{padding:'10px 14px',borderTop:'0.5px solid rgba(0,0,0,0.08)',background:'#f8f7f4',display:'flex',gap:8,alignItems:'center'}}>
               <input value={newDocName} onChange={e => setNewDocName(e.target.value)} placeholder="Document name"
