@@ -1,6 +1,5 @@
 'use client'
 import { useState, useEffect, useRef, useCallback } from 'react'
-import * as XLSX from 'xlsx'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 
@@ -282,73 +281,487 @@ export default function FmeaPage() {
   })
 
 
-  function exportToExcel() {
+  async function exportToExcel() {
     if (!fmea) return
-    const wb = XLSX.utils.book_new()
+    const ExcelJS = (await import('exceljs')).default
+    const wb = new ExcelJS.Workbook()
+    wb.creator = fmea.prepared_by || 'TFBuilder'
+    wb.created = new Date()
 
-    const ws1 = XLSX.utils.aoa_to_sheet([
-      ['Risk Analysis'],
-      ['Product', fmea.title, '', 'Record ID:', fmea.record_id],
-      ['Form code:', fmea.form_code, '', 'Revision', fmea.revision, 'Date', fmea.doc_date?.split('T')[0] || ''],
-      ['Analysis prepared by', fmea.prepared_by, '', 'Signature', ''],
-      ['Approved by:', fmea.approved_by, '', 'Signature', ''],
-      [], ['Revision history table:'], [],
-      ['Revision', 'Issue Date', 'Description', 'Author'],
-      ...revisions.map((r: any) => [r.revision, r.issue_date?.split('T')[0] || '', r.description, r.author]),
-    ])
-    ws1['!cols'] = [{wch:22},{wch:28},{wch:14},{wch:14},{wch:28},{wch:8},{wch:14}]
-    XLSX.utils.book_append_sheet(wb, ws1, 'Document Info')
+    // ── helpers ──
+    const GRAY_FILL = { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'FFD9D9D9' } }
+    const BLUE_FILL = { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'FFB8CCE4' } }
+    const LIGHT_BLUE_FILL = { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'FFDCE6F1' } }
+    const GREEN_FILL = { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'FFEAF3DE' } }
+    const YELLOW_FILL = { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'FFFFFBCC' } }
+    const RED_FILL = { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'FFFCEBEB' } }
+    const HEADER_FONT = { bold: true, size: 11 }
+    const THIN_BORDER = {
+      top: { style: 'thin' as const }, bottom: { style: 'thin' as const },
+      left: { style: 'thin' as const }, right: { style: 'thin' as const }
+    }
+    function applyBorder(cell: any) { cell.border = THIN_BORDER }
+    function applyBorderRange(ws: any, r1: number, c1: number, r2: number, c2: number) {
+      for (let r = r1; r <= r2; r++) for (let c = c1; c <= c2; c++) applyBorder(ws.getCell(r, c))
+    }
 
-    const ws2 = XLSX.utils.aoa_to_sheet([
-      ['RISK MANAGEMENT TEAM'],
-      ['No', 'Name and Surname of Expert', 'Role', 'Organisation', 'Knowledge and experience'],
-      ...rmTeam.map((r: any, i: number) => [i+1, r.name, r.role, r.organisation, r.knowledge]),
-    ])
-    ws2['!cols'] = [{wch:5},{wch:28},{wch:22},{wch:22},{wch:40}]
-    XLSX.utils.book_append_sheet(wb, ws2, 'RM Team')
+    // ══════════════════════════════════════════
+    // SHEET 1: Document Info
+    // ══════════════════════════════════════════
+    const ws1 = wb.addWorksheet('Document Info')
+    ws1.columns = [
+      {width:18},{width:30},{width:14},{width:14},{width:30},{width:10},{width:14},{width:14},{width:14},{width:14},{width:14},{width:14},{width:14},{width:14},{width:14},{width:14},{width:14}
+    ]
 
-    const ws3 = XLSX.utils.aoa_to_sheet([
-      ['ISO/TR 24971:2020 Annex A', 'Answer', 'Input to Risk Analysis?', 'RISK ID'],
-      ...questions.map((q: any) => {
-        const ans = answers[q.id] || {answer:'',input_to_ra:'',risk_ids:''}
-        return [`${q.code} - ${q.question}`, ans.answer, ans.input_to_ra, ans.risk_ids]
-      }),
-    ])
-    ws3['!cols'] = [{wch:60},{wch:35},{wch:18},{wch:14}]
-    XLSX.utils.book_append_sheet(wb, ws3, 'Annex A - Safety')
+    // Row 1: Title
+    ws1.mergeCells('A1:Q1')
+    const titleCell = ws1.getCell('A1')
+    titleCell.value = 'Risk Analysis'
+    titleCell.font = { bold: true, size: 18 }
+    titleCell.alignment = { horizontal: 'center', vertical: 'middle' }
+    titleCell.fill = GRAY_FILL
+    ws1.getRow(1).height = 36
+    applyBorderRange(ws1, 1, 1, 1, 17)
 
+    // Row 2: Product + Record ID
+    ws1.mergeCells('A2:B2')
+    ws1.getCell('A2').value = 'Product'
+    ws1.getCell('A2').font = HEADER_FONT
+    ws1.getCell('A2').fill = GRAY_FILL
+    ws1.mergeCells('C2:E2')
+    ws1.getCell('C2').value = fmea.title
+    ws1.getCell('F2').value = 'Record ID:'
+    ws1.getCell('F2').font = HEADER_FONT
+    ws1.getCell('F2').fill = GRAY_FILL
+    ws1.mergeCells('G2:Q2')
+    ws1.getCell('G2').value = fmea.record_id
+    applyBorderRange(ws1, 2, 1, 2, 17)
+
+    // Row 3: Form code + Revision + Date
+    ws1.mergeCells('A3:B3')
+    ws1.getCell('A3').value = 'Form code:'
+    ws1.getCell('A3').font = HEADER_FONT
+    ws1.getCell('A3').fill = GRAY_FILL
+    ws1.mergeCells('C3:E3')
+    ws1.getCell('C3').value = fmea.form_code
+    ws1.getCell('F3').value = 'Revision'
+    ws1.getCell('F3').font = HEADER_FONT
+    ws1.getCell('F3').fill = GRAY_FILL
+    ws1.mergeCells('G3:L3')
+    ws1.getCell('G3').value = fmea.revision
+    ws1.getCell('M3').value = 'Date'
+    ws1.getCell('M3').font = HEADER_FONT
+    ws1.getCell('M3').fill = GRAY_FILL
+    ws1.mergeCells('N3:Q3')
+    ws1.getCell('N3').value = fmea.doc_date?.split('T')[0] || ''
+    applyBorderRange(ws1, 3, 1, 3, 17)
+
+    // Row 4: Prepared by
+    ws1.mergeCells('A4:B4')
+    ws1.getCell('A4').value = 'Analysis prepared by'
+    ws1.getCell('A4').font = HEADER_FONT
+    ws1.getCell('A4').fill = GRAY_FILL
+    ws1.mergeCells('C4:K4')
+    ws1.getCell('C4').value = fmea.prepared_by
+    ws1.mergeCells('L4:M4')
+    ws1.getCell('L4').value = 'Signature'
+    ws1.getCell('L4').font = HEADER_FONT
+    ws1.getCell('L4').fill = GRAY_FILL
+    ws1.mergeCells('N4:Q4')
+    ws1.getRow(4).height = 28
+    applyBorderRange(ws1, 4, 1, 4, 17)
+
+    // Row 5: Approved by
+    ws1.mergeCells('A5:B5')
+    ws1.getCell('A5').value = 'Approved by:'
+    ws1.getCell('A5').font = { bold: true, size: 11, italic: true }
+    ws1.getCell('A5').fill = GRAY_FILL
+    ws1.mergeCells('C5:K5')
+    ws1.getCell('C5').value = fmea.approved_by
+    ws1.mergeCells('L5:M5')
+    ws1.getCell('L5').value = 'Signature'
+    ws1.getCell('L5').font = HEADER_FONT
+    ws1.getCell('L5').fill = GRAY_FILL
+    ws1.mergeCells('N5:Q5')
+    ws1.getRow(5).height = 28
+    applyBorderRange(ws1, 5, 1, 5, 17)
+
+    // Row 7: Revision history label
+    ws1.getCell('A7').value = 'Revision history table:'
+    ws1.getCell('A7').font = { size: 10 }
+
+    // Row 9: Revision history headers
+    const rhHeaders = ['Revision', 'Issue Date', 'Description', 'Author']
+    const rhCols = ['A', 'B', 'C', 'G']
+    const rhWidths = [['A9','A9'],['B9','B9'],['C9','F9'],['G9','Q9']]
+    rhWidths.forEach(([s,e], idx) => {
+      if (s !== e) ws1.mergeCells(`${s}:${e}`)
+      const c = ws1.getCell(s)
+      c.value = rhHeaders[idx]
+      c.font = HEADER_FONT
+      c.fill = GRAY_FILL
+      c.alignment = { horizontal: 'center' }
+      applyBorder(c)
+    })
+    ws1.getRow(9).height = 22
+
+    // Revision history rows
+    revisions.forEach((r: any, i: number) => {
+      const row = 10 + i
+      ws1.getCell(`A${row}`).value = r.revision
+      ws1.getCell(`B${row}`).value = r.issue_date?.split('T')[0] || ''
+      ws1.mergeCells(`C${row}:F${row}`)
+      ws1.getCell(`C${row}`).value = r.description
+      ws1.mergeCells(`G${row}:Q${row}`)
+      ws1.getCell(`G${row}`).value = r.author
+      applyBorderRange(ws1, row, 1, row, 17)
+      ws1.getRow(row).height = 20
+    })
+    // Empty rows
+    for (let i = revisions.length; i < 5; i++) {
+      const row = 10 + i
+      ws1.mergeCells(`C${row}:F${row}`)
+      ws1.mergeCells(`G${row}:Q${row}`)
+      applyBorderRange(ws1, row, 1, row, 17)
+      ws1.getRow(row).height = 20
+    }
+
+    // ══════════════════════════════════════════
+    // SHEET 2: RM Team
+    // ══════════════════════════════════════════
+    const ws2 = wb.addWorksheet('RM Team')
+    ws2.columns = [{width:6},{width:28},{width:22},{width:22},{width:50}]
+
+    // Title
+    ws2.mergeCells('A1:E1')
+    const rmTitle = ws2.getCell('A1')
+    rmTitle.value = 'RISK MANAGEMENT TEAM'
+    rmTitle.font = { bold: true, size: 13 }
+    rmTitle.alignment = { horizontal: 'center', vertical: 'middle' }
+    ws2.getRow(1).height = 28
+    applyBorderRange(ws2, 1, 1, 1, 5)
+
+    // Headers
+    const rmH = ['No', 'Name and Surname of Expert', 'Role', 'Organisation', 'Knowledge and experience']
+    rmH.forEach((h, i) => {
+      const cell = ws2.getCell(2, i+1)
+      cell.value = h
+      cell.font = HEADER_FONT
+      cell.fill = GRAY_FILL
+      cell.alignment = { horizontal: 'center', wrapText: true }
+      applyBorder(cell)
+    })
+    ws2.getRow(2).height = 22
+
+    // Data rows
+    const rmRows = [...rmTeam]
+    while (rmRows.length < 7) rmRows.push({ id: '', no: rmRows.length+1, name:'', role:'', organisation:'', knowledge:'', position: 0 } as RmRow)
+    rmRows.forEach((r: any, i: number) => {
+      const row = 3 + i
+      const height = i >= 5 ? 60 : 20
+      ;[i+1, r.name, r.role, r.organisation, r.knowledge].forEach((val, ci) => {
+        const cell = ws2.getCell(row, ci+1)
+        cell.value = val || ''
+        cell.alignment = { wrapText: true, vertical: 'middle' }
+        applyBorder(cell)
+      })
+      ws2.getRow(row).height = height
+    })
+
+    // ══════════════════════════════════════════
+    // SHEET 3: Annex A
+    // ══════════════════════════════════════════
+    const ws3 = wb.addWorksheet('Annex A - Safety')
+    ws3.columns = [{width:70},{width:40},{width:18},{width:16}]
+
+    // Header row
+    const annexHeaders = [
+      'ISO/TR 24971:2020 - Annex A - Identification of hazards and characteristics related to safety',
+      'Answer', 'Input to Risk Analysis? (yes/no)', 'RISK ID'
+    ]
+    const annexHeaderFills = [BLUE_FILL, {type:'pattern' as const, pattern:'solid' as const, fgColor:{argb:'FFF8F7F4'}}, BLUE_FILL, {type:'pattern' as const, pattern:'solid' as const, fgColor:{argb:'FFF8F7F4'}}]
+    annexHeaders.forEach((h, i) => {
+      const cell = ws3.getCell(1, i+1)
+      cell.value = h
+      cell.font = HEADER_FONT
+      cell.fill = annexHeaderFills[i]
+      cell.alignment = { wrapText: true, vertical: 'middle', horizontal: 'center' }
+      applyBorder(cell)
+    })
+    ws3.getRow(1).height = 40
+
+    // Question rows
+    questions.forEach((q: any, i: number) => {
+      const ans = answers[q.id] || { answer: '', input_to_ra: '', risk_ids: '' }
+      const row = 2 + i
+      const qCell = ws3.getCell(row, 1)
+      qCell.value = `${q.code} — ${q.question}
+${q.sub_bullets || ''}`
+      qCell.font = { size: 10 }
+      qCell.alignment = { wrapText: true, vertical: 'top' }
+      qCell.fill = LIGHT_BLUE_FILL
+      applyBorder(qCell)
+
+      const aCell = ws3.getCell(row, 2)
+      aCell.value = ans.answer
+      aCell.alignment = { wrapText: true, vertical: 'top' }
+      applyBorder(aCell)
+
+      const iraCell = ws3.getCell(row, 3)
+      iraCell.value = ans.input_to_ra
+      iraCell.alignment = { horizontal: 'center', vertical: 'middle' }
+      applyBorder(iraCell)
+
+      const ridCell = ws3.getCell(row, 4)
+      ridCell.value = ans.risk_ids
+      ridCell.font = { name: 'Courier New', size: 10 }
+      applyBorder(ridCell)
+
+      ws3.getRow(row).height = 80
+    })
+
+    // ══════════════════════════════════════════
+    // SHEET 4: Risk Criteria
+    // ══════════════════════════════════════════
     if (criteria) {
-      const ws4 = XLSX.utils.aoa_to_sheet([
-        ['', 'Negligible (1)', 'Minor (2)', 'Serious (3)', 'Critical (4)', 'Catastrophic (5)'],
-        ...([['Frequent',5],['Probable',4],['Occasional',3],['Remote',2],['Improbable',1]] as [string,number][]).map(([label,prob]) => [
-          `${label} (${prob})`,...[1,2,3,4,5].map(sev => { const r=prob*sev; return r<=criteria.r1_max?'R1':r<=criteria.r2_max?'R2':'R3' })
-        ]),
-        [],
-        ['Risk Class','Risk Level','Range','Acceptance Criteria'],
-        ['R1','Low Risk Level',`${criteria.r1_min}-${criteria.r1_max}`,'Acceptable'],
-        ['R2','Medium Risk Level',`${criteria.r2_min}-${criteria.r2_max}`,'Risk reduction required'],
-        ['R3','High Risk Level',`${criteria.r3_min}-${criteria.r3_max}`,'Not acceptable'],
-      ])
-      XLSX.utils.book_append_sheet(wb, ws4, 'Risk Criteria')
-    }
+      const ws4 = wb.addWorksheet('Risk Criteria')
+      ws4.columns = [{width:16},{width:14},{width:14},{width:14},{width:14},{width:14},{width:2},{width:2},{width:2},{width:20},{width:40},{width:10}]
 
-    for (const sheet of sheets) {
-      const sheetData = [
-        [`Hazards related to ${sheet.name}`],
-        ['Hazard No','Hazard','Sequence of events','Hazardous situation','Harm','Prob.','Sev.','Risk Est.','Risk Level','Mitigation','Res.Prob.','Res.Sev.','Res.Est.','Res.Risk Level','Verification Doc','Residual Hazard','Benefit Analysis','New hazards?'],
-        ...sheet.rows.map((row: any, i: number) => {
-          const re = (row.probability && row.severity) ? row.probability * row.severity : null
-          const rre = (row.residual_probability && row.residual_severity) ? row.residual_probability * row.residual_severity : null
-          const rl = re && criteria ? (re<=criteria.r1_max?'LOW RISK':re<=criteria.r2_max?'MEDIUM RISK':'HIGH RISK') : ''
-          const rrl = rre && criteria ? (rre<=criteria.r1_max?'LOW RISK':rre<=criteria.r2_max?'MEDIUM RISK':'HIGH RISK') : ''
-          return [`${sheet.prefix}-${String(i+1).padStart(2,'0')}`,row.hazard,row.sequence_of_events,row.hazardous_situation,row.harm,row.probability,row.severity,re,rl,row.mitigation,row.residual_probability,row.residual_severity,rre,rrl,row.verification_document,row.residual_hazard,row.benefit_analysis,row.new_hazards]
-        }),
+      // Matrix title area - diagonal header
+      ws4.getCell('A1').value = 'Severity →'
+      ws4.getCell('A1').font = { bold: true, size: 10 }
+      ws4.getCell('A2').value = 'Probability ↓'
+      ws4.getCell('A2').font = { bold: true, size: 10 }
+      applyBorder(ws4.getCell('A1'))
+      applyBorder(ws4.getCell('A2'))
+
+      // Severity headers row 1
+      const sevLabels = ['Negligible (1)', 'Minor (2)', 'Serious (3)', 'Critical (4)', 'Catastrophic (5)']
+      sevLabels.forEach((s, i) => {
+        const cell = ws4.getCell(1, i+2)
+        cell.value = s
+        cell.font = HEADER_FONT
+        cell.fill = GRAY_FILL
+        cell.alignment = { horizontal: 'center', wrapText: true }
+        applyBorder(cell)
+      })
+      ws4.getRow(1).height = 30
+
+      // Probability rows
+      const probRows = [['Frequent',5],['Probable',4],['Occasional',3],['Remote',2],['Improbable',1]] as [string,number][]
+      probRows.forEach(([label, prob], pi) => {
+        const row = pi + 2
+        const labelCell = ws4.getCell(row, 1)
+        labelCell.value = `${label}
+${prob}`
+        labelCell.font = HEADER_FONT
+        labelCell.fill = GRAY_FILL
+        labelCell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true }
+        applyBorder(labelCell)
+        ws4.getRow(row).height = 28
+
+        for (let si = 0; si < 5; si++) {
+          const sev = si + 1
+          const rpn = prob * sev
+          const rClass = rpn <= criteria.r1_max ? 'R1' : rpn <= criteria.r2_max ? 'R2' : 'R3'
+          const fill = rClass === 'R1' ? GREEN_FILL : rClass === 'R2' ? YELLOW_FILL : RED_FILL
+          const color = rClass === 'R1' ? 'FF27500A' : rClass === 'R2' ? 'FF7A6500' : 'FFA32D2D'
+          const cell = ws4.getCell(row, si+2)
+          cell.value = rClass
+          cell.font = { bold: true, size: 12, color: { argb: color } }
+          cell.fill = fill
+          cell.alignment = { horizontal: 'center', vertical: 'middle' }
+          applyBorder(cell)
+        }
+      })
+
+      // Note text
+      ws4.mergeCells('A8:F8')
+      ws4.getCell('A8').value = 'Additional risk control measures shall be implemented to reduce the risk to R1 level. If no measures are practicable or if the risk value remains within the R2 level, a risk-benefit analysis must be performed and documented in the risk management report.'
+      ws4.getCell('A8').alignment = { wrapText: true, vertical: 'middle' }
+      ws4.getCell('A8').font = { size: 9 }
+      ws4.getRow(8).height = 40
+
+      // Acceptance table
+      const accHeaders = ['Risk Class', 'Risk level', 'Range', 'Acceptance Criteria']
+      accHeaders.forEach((h, i) => {
+        const cell = ws4.getCell(9, i+1)
+        cell.value = h
+        cell.font = HEADER_FONT
+        cell.fill = BLUE_FILL
+        cell.alignment = { horizontal: 'center' }
+        applyBorder(cell)
+      })
+      const accRows = [
+        { cls: 'R1', level: 'Low Risk Level', range: `${criteria.r1_min}-${criteria.r1_max}`, criteria: 'Acceptable', fill: GREEN_FILL, color: 'FF27500A' },
+        { cls: 'R2', level: 'Medium Risk Level', range: `${criteria.r2_min}-${criteria.r2_max}`, criteria: 'Risk reduction actions required', fill: YELLOW_FILL, color: 'FF7A6500' },
+        { cls: 'R3', level: 'High Risk Level', range: `${criteria.r3_min}-${criteria.r3_max}`, criteria: 'Not acceptable Risk', fill: RED_FILL, color: 'FFA32D2D' },
       ]
-      const ws = XLSX.utils.aoa_to_sheet(sheetData)
-      XLSX.utils.book_append_sheet(wb, ws, sheet.name.slice(0,31))
+      accRows.forEach((ar, i) => {
+        const row = 10 + i
+        const clsCell = ws4.getCell(row, 1)
+        clsCell.value = ar.cls
+        clsCell.font = { bold: true, size: 12, color: { argb: ar.color } }
+        clsCell.fill = ar.fill
+        clsCell.alignment = { horizontal: 'center', vertical: 'middle' }
+        applyBorder(clsCell)
+        ;[ar.level, ar.range, ar.criteria].forEach((val, ci) => {
+          const cell = ws4.getCell(row, ci+2)
+          cell.value = val
+          if (ci === 1) { cell.font = { bold: true, color: { argb: ar.color } }; cell.alignment = { horizontal: 'center' } }
+          applyBorder(cell)
+        })
+        ws4.getRow(row).height = 22
+      })
+
+      // Severity definition table (right side)
+      const sevDefHeaders = ['SEVERITY', 'Definition', 'Value']
+      sevDefHeaders.forEach((h, i) => {
+        const cell = ws4.getCell(1, i+10)
+        cell.value = h
+        cell.font = HEADER_FONT
+        cell.fill = GRAY_FILL
+        cell.alignment = { horizontal: 'center' }
+        applyBorder(cell)
+      })
+      const sevDefs = [
+        ['Catastrophic', 'Serious injury (irreversible) of the patient or user', 5],
+        ['Critical', 'Serious injury (reversible) to the patient or user.', 4],
+        ['Serious', 'Moderate injury to the patient or user or moderate negative effect on the environment.', 3],
+        ['Minor', 'Minor injury to the patient or user or minor negative effect on the environment.', 2],
+        ['Negligible', 'No injury to the patient or user. Possible little damage to the device/system.', 1],
+      ]
+      sevDefs.forEach(([name, def, val], i) => {
+        const row = 2 + i
+        ws4.getCell(row, 10).value = name; ws4.getCell(row, 10).font = { bold: true }; applyBorder(ws4.getCell(row, 10))
+        ws4.getCell(row, 11).value = def; ws4.getCell(row, 11).alignment = { wrapText: true }; applyBorder(ws4.getCell(row, 11))
+        ws4.getCell(row, 12).value = val; ws4.getCell(row, 12).alignment = { horizontal: 'center' }; ws4.getCell(row, 12).font = { bold: true }; applyBorder(ws4.getCell(row, 12))
+        ws4.getRow(row).height = 28
+      })
+
+      // Probability definition table (right side)
+      sevDefHeaders.forEach((h, i) => {
+        const cell = ws4.getCell(8, i+10)
+        cell.value = i === 0 ? 'Probability' : h
+        cell.font = HEADER_FONT
+        cell.fill = GRAY_FILL
+        cell.alignment = { horizontal: 'center' }
+        applyBorder(cell)
+      })
+      const probDefs = [
+        ['Frequent', 'Above 1 in 10 (10%)', 5],
+        ['Probable', '1 in 100 < F ≤ 1 in 10 (1% to 10%)', 4],
+        ['Occasional', '1 in 1,000 < F ≤ 1 in 100', 3],
+        ['Remote', '1 in 10,000 ≤ F ≤ 1 in 1,000', 2],
+        ['Improbable', 'F ≤ 1 in 10,000', 1],
+      ]
+      probDefs.forEach(([name, def, val], i) => {
+        const row = 9 + i
+        ws4.getCell(row, 10).value = name; ws4.getCell(row, 10).font = { bold: true }; applyBorder(ws4.getCell(row, 10))
+        ws4.getCell(row, 11).value = def; ws4.getCell(row, 11).alignment = { wrapText: true }; applyBorder(ws4.getCell(row, 11))
+        ws4.getCell(row, 12).value = val; ws4.getCell(row, 12).alignment = { horizontal: 'center' }; ws4.getCell(row, 12).font = { bold: true }; applyBorder(ws4.getCell(row, 12))
+        ws4.getRow(row).height = 22
+      })
     }
 
-    XLSX.writeFile(wb, `Risk_Analysis_${fmea.revision}.xlsx`)
+    // ══════════════════════════════════════════
+    // FMEA sheets
+    // ══════════════════════════════════════════
+    for (const sheet of sheets) {
+      const ws = wb.addWorksheet(sheet.name.slice(0, 31))
+      ws.columns = [
+        {width:10},{width:14},{width:24},{width:24},{width:24},
+        {width:7},{width:7},{width:9},{width:14},
+        {width:36},
+        {width:9},{width:9},{width:12},{width:16},
+        {width:22},{width:24},{width:24},{width:20},{width:6}
+      ]
+
+      // Row 1: section titles
+      ws.mergeCells('A1:I1')
+      ws.getCell('A1').value = `Hazards related to ${sheet.name}`
+      ws.getCell('A1').font = { bold: true, size: 12 }
+      ws.getCell('A1').fill = BLUE_FILL
+      ws.getCell('A1').alignment = { horizontal: 'center', vertical: 'middle' }
+      applyBorderRange(ws, 1, 1, 1, 9)
+
+      ws.mergeCells('J1:N1')
+      ws.getCell('J1').value = 'Residual Risk'
+      ws.getCell('J1').font = { bold: true, size: 12 }
+      ws.getCell('J1').fill = GRAY_FILL
+      ws.getCell('J1').alignment = { horizontal: 'center', vertical: 'middle' }
+      applyBorderRange(ws, 1, 10, 1, 14)
+
+      ws.mergeCells('O1:R1')
+      ws.getCell('O1').value = 'Evaluation of Overall Residual Risk Acceptability'
+      ws.getCell('O1').font = { bold: true, size: 10 }
+      ws.getCell('O1').fill = GREEN_FILL
+      ws.getCell('O1').alignment = { horizontal: 'center', vertical: 'middle', wrapText: true }
+      applyBorderRange(ws, 1, 15, 1, 18)
+      ws.getRow(1).height = 30
+
+      // Row 2: column headers
+      const fmeaHeaders = [
+        'HAZARD No','Hazard','Foreseeable sequence of events (cause)','Hazardous situation','Harm to patient / user',
+        'Probability of Occurrence','Severity','Risk estimation','Risk Level',
+        'Risk Mitigation measure',
+        'Probability of Occurrence','Severity','Mitigated risk estimation','Residual Risk Review Level',
+        'Related verification Document',
+        'Residual Hazard (Yes/No) + Rationale','Benefit / Residual Risk Analysis','Do risk control parameters cause new hazards or risks?'
+      ]
+      fmeaHeaders.forEach((h, i) => {
+        const cell = ws.getCell(2, i+1)
+        cell.value = h
+        cell.font = { bold: true, size: 9 }
+        cell.fill = i < 9 ? BLUE_FILL : i < 14 ? GRAY_FILL : GREEN_FILL
+        cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true }
+        applyBorder(cell)
+      })
+      ws.getRow(2).height = 50
+      ws.views = [{ state: 'frozen', xSplit: 0, ySplit: 2 }]
+
+      // Data rows
+      sheet.rows.forEach((row: any, i: number) => {
+        const re = (row.probability && row.severity) ? row.probability * row.severity : null
+        const rre = (row.residual_probability && row.residual_severity) ? row.residual_probability * row.residual_severity : null
+        const rl = re && criteria ? (re <= criteria.r1_max ? 'LOW RISK' : re <= criteria.r2_max ? 'MEDIUM RISK' : 'HIGH RISK') : ''
+        const rrl = rre && criteria ? (rre <= criteria.r1_max ? 'LOW RISK' : rre <= criteria.r2_max ? 'MEDIUM RISK' : 'HIGH RISK') : ''
+        const rlFill = re && criteria ? (re <= criteria.r1_max ? GREEN_FILL : re <= criteria.r2_max ? YELLOW_FILL : RED_FILL) : { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'FFFFFFFF' } }
+        const rrlFill = rre && criteria ? (rre <= criteria.r1_max ? GREEN_FILL : rre <= criteria.r2_max ? YELLOW_FILL : RED_FILL) : { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'FFFFFFFF' } }
+
+        const dataRow = 3 + i
+        const vals = [
+          `${sheet.prefix}-${String(i+1).padStart(2,'0')}`,
+          row.hazard, row.sequence_of_events, row.hazardous_situation, row.harm,
+          row.probability, row.severity, re, rl,
+          row.mitigation,
+          row.residual_probability, row.residual_severity, rre, rrl,
+          row.verification_document, row.residual_hazard, row.benefit_analysis, row.new_hazards
+        ]
+        vals.forEach((val, ci) => {
+          const cell = ws.getCell(dataRow, ci+1)
+          cell.value = val ?? ''
+          cell.alignment = { wrapText: true, vertical: 'top' }
+          applyBorder(cell)
+          // Color risk level cells
+          if (ci === 8) { cell.fill = rlFill; cell.font = { bold: true, size: 9 }; cell.alignment = { horizontal: 'center', vertical: 'middle' } }
+          if (ci === 13) { cell.fill = rrlFill; cell.font = { bold: true, size: 9 }; cell.alignment = { horizontal: 'center', vertical: 'middle' } }
+          if (ci === 7 || ci === 12) { cell.font = { bold: true }; cell.alignment = { horizontal: 'center', vertical: 'middle' } }
+          if (ci === 0) { cell.font = { bold: true, color: { argb: 'FF185FA5' } }; cell.alignment = { horizontal: 'center', vertical: 'middle' } }
+        })
+        ws.getRow(dataRow).height = 60
+      })
+    }
+
+    // Download
+    const buf = await wb.xlsx.writeBuffer()
+    const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `Risk_Analysis_${(fmea.title || 'document').replace(/[^a-zA-Z0-9]/g,'_')}_${fmea.revision}.xlsx`
+    a.click()
+    URL.revokeObjectURL(url)
   }
 
   if (loading) return (
