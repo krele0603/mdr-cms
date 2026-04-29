@@ -504,6 +504,20 @@ export default function ProjectDetailPage() {
               </div>
             </div>
           )}
+          {activeAnnex === 'Annex VI' && (
+            <div style={{padding:'11px 14px',borderBottom:'0.5px solid rgba(0,0,0,0.06)',display:'flex',alignItems:'center',gap:10,background:'rgba(60,52,137,0.03)'}}>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:13,fontWeight:500,color:'#3C3489'}}>Traceability Matrix</div>
+                <div style={{fontSize:11,color:'#9b9991',fontFamily:'monospace',marginTop:1}}>TRACEABILITY</div>
+              </div>
+              <div style={{display:'flex',alignItems:'center',gap:6,flexShrink:0}}>
+                <Link href={`/dashboard/projects/${id}/traceability`}
+                  style={{height:26,padding:'0 14px',fontSize:11,background:'#EEEDFE',border:'0.5px solid #AFA9EC',borderRadius:6,color:'#3C3489',textDecoration:'none',display:'inline-flex',alignItems:'center',gap:4,fontWeight:500}}>
+                  Open Traceability
+                </Link>
+              </div>
+            </div>
+          )}
           {activeAnnex === 'Annex V' && (
             <div style={{padding:'11px 14px',borderBottom:'0.5px solid rgba(0,0,0,0.06)',display:'flex',alignItems:'center',gap:10,background:'rgba(165,40,40,0.03)'}}>
               <div style={{flex:1,minWidth:0}}>
