@@ -33,7 +33,7 @@ export async function middleware(req: NextRequest) {
   }
 
   // Admin-only routes
-  const adminOnlyPaths = ['/dashboard/templates', '/dashboard/lists', '/dashboard/users']
+  const adminOnlyPaths = ['/dashboard/templates', '/dashboard/structured-templates', '/dashboard/lists', '/dashboard/users']
   if (adminOnlyPaths.some(p => pathname.startsWith(p)) && user.role !== 'admin') {
     return NextResponse.redirect(new URL('/dashboard', req.url))
   }
