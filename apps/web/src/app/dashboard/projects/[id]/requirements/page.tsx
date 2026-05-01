@@ -160,6 +160,11 @@ export default function RequirementsPage() {
   const activeList = lists.find(l => l.id === activeListId) || null
   const systemList = lists.find(l => l.type === 'system') || null
   const hasSystem = !!systemList
+  const [structuredTemplates, setStructuredTemplates] = useState<any[]>([])
+
+  useEffect(() => {
+    fetch('/api/structured-templates').then(r => r.ok ? r.json() : []).then(setStructuredTemplates)
+  }, [])
 
   // ── List actions ──
   async function addList() {
@@ -324,8 +329,18 @@ export default function RequirementsPage() {
                     {activeList.type === 'system' ? 'System Requirements List' : activeList.name}
                   </span>
                 </div>
-                {canEdit && (
-                  <div style={{ display: 'flex', gap: 8 }}>
+                <div style={{ display: 'flex', gap: 8 }}>
+                    {(() => {
+                      const matchingTemplate = structuredTemplates.find(t => t.req_type === activeList.type && t.status === 'active')
+                      if (matchingTemplate) return (
+                        <a href={`/dashboard/projects/${projectId}/requirements/document/${activeList.type}`}
+                          style={{ height: 28, padding: '0 12px', fontSize: 11, background: '#185FA5', border: 'none', borderRadius: 6, color: '#fff', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', textDecoration: 'none' }}>
+                          📄 Generate Document
+                        </a>
+                      )
+                      return null
+                    })()}
+                    {canEdit && <>
                     <button onClick={() => { setShowNewGroup(activeList.id); setNewGroupName(''); setNewGroupPrefix('') }}
                       style={{ height: 28, padding: '0 12px', fontSize: 11, background: 'rgba(78,140,140,0.1)', border: '0.5px solid rgba(78,140,140,0.35)', borderRadius: 6, color: '#2e5f5f', cursor: 'pointer' }}>
                       + Add group
@@ -334,8 +349,8 @@ export default function RequirementsPage() {
                       style={{ height: 28, padding: '0 10px', fontSize: 11, background: '#FCEBEB', border: '0.5px solid #F09595', borderRadius: 6, color: '#A32D2D', cursor: 'pointer' }}>
                       Delete list
                     </button>
+                    </>}
                   </div>
-                )}
               </div>
 
               {/* Groups */}
