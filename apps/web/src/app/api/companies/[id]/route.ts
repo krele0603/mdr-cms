@@ -6,15 +6,13 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   const session = await getSession()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  // Consultant must be a member
-  if (session.role === 'consultant') {
+  // Non-admin must be a member of the company
+  if (session.role !== 'admin') {
     const member = await queryOne(
       `SELECT id FROM company_members WHERE company_id=$1::uuid AND user_id=$2::uuid`,
       [params.id, session.id]
     )
     if (!member) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  } else if (!['admin'].includes(session.role)) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
   const company = await queryOne(

@@ -22,8 +22,6 @@ const tfbuilderItems = [
     icon: <svg style={{width:15,height:15,stroke:'currentColor',fill:'none',strokeWidth:1.5,strokeLinecap:'round' as const,strokeLinejoin:'round' as const}} viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg> },
   { label: 'Users', href: '/dashboard/users', roles: ['admin'],
     icon: <svg style={{width:15,height:15,stroke:'currentColor',fill:'none',strokeWidth:1.5,strokeLinecap:'round' as const,strokeLinejoin:'round' as const}} viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> },
-  { label: 'My Projects', href: '/dashboard/client', roles: ['client'],
-    icon: <svg style={{width:15,height:15,stroke:'currentColor',fill:'none',strokeWidth:1.5,strokeLinecap:'round' as const,strokeLinejoin:'round' as const}} viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg> },
 ]
 
 // Companies link for admin/consultant
@@ -56,7 +54,7 @@ export default function DashboardNav({ user }: Props) {
   const roleStyle = ROLE_STYLES[user.role] || ROLE_STYLES.client
   const visibleTFItems = tfbuilderItems.filter(i => i.roles.includes(user.role))
   const visibleEQMSItems = eqmsItems.filter(i => i.roles.includes(user.role))
-  const showCompanies = ['admin', 'consultant'].includes(user.role)
+  const showCompanies = ['admin', 'consultant', 'client', 'client-MR'].includes(user.role)
   const initials = user.name.split(' ').filter(Boolean).map(n => n[0]).join('').toUpperCase().slice(0, 2)
 
   const [notifications, setNotifications] = useState<Notification[]>([])
@@ -350,8 +348,7 @@ export default function DashboardNav({ user }: Props) {
       <aside style={{ width: 220, background: '#1a1f24', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
         {/* Logo */}
         <div style={{ padding: '20px 20px 16px', borderBottom: '0.5px solid rgba(255,255,255,0.08)' }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: '#4e8c8c', letterSpacing: '0.05em', textTransform: 'uppercase' as const }}>EasyQMS</div>
-          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginTop: 2 }}>{user.company_name || 'EasyMed Consulting'}</div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: '#4e8c8c', letterSpacing: '0.05em', }}>EasyQMS</div>
         </div>
 
         {/* Nav */}
@@ -360,7 +357,7 @@ export default function DashboardNav({ user }: Props) {
           {/* eQMS section */}
           <div style={{ fontSize: 10, fontWeight: 600, color: 'rgba(255,255,255,0.25)', letterSpacing: '0.08em', textTransform: 'uppercase' as const, padding: '4px 12px 6px' }}>eQMS</div>
           {showCompanies && <NavItem {...companiesItem} />}
-          {visibleEQMSItems.map(item => <NavItem key={item.href} {...item} />)}
+          
 
           {/* TFBuilder section — only for admin/consultant */}
           {visibleTFItems.length > 0 && (

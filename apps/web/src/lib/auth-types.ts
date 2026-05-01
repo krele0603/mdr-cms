@@ -5,8 +5,9 @@ export interface SessionUser {
   email: string
   name: string
   role: UserRole
-  company_id: string | null
-  company_name: string | null
+  company_id: string | null       // primary company (first one, for backwards compat)
+  company_name: string | null     // primary company name
+  company_ids: string[]           // all companies user belongs to
 }
 
 export const ROLE_LABELS: Record<UserRole, string> = {

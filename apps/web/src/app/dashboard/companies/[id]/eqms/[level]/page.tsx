@@ -154,7 +154,7 @@ export default function CompanyEqmsLevelPage() {
 
   async function loadDocuments(folderId: string) {
     setLoadingDocs(true)
-    const res = await fetch(`/api/eqms/documents?folder_id=${folderId}`)
+    const res = await fetch(`/api/eqms/documents?folder_id=${folderId}&company_id=${companyId}`)
     if (res.ok) setDocuments(await res.json())
     setLoadingDocs(false)
   }
@@ -221,7 +221,7 @@ export default function CompanyEqmsLevelPage() {
 
   async function deleteDocument(docId: string, title: string) {
     if (!confirm(`Delete "${title}"? This cannot be undone.`)) return
-    await fetch(`/api/documents/${docId}`, { method: 'DELETE' })
+    await fetch(`/api/eqms/documents/${docId}`, { method: 'DELETE' })
     if (selectedFolder) loadDocuments(selectedFolder)
   }
 

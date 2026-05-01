@@ -29,7 +29,7 @@ export async function middleware(req: NextRequest) {
     if (allowed.some(p => pathname.startsWith(p))) {
       return NextResponse.next()
     }
-    return NextResponse.redirect(new URL('/dashboard/client', req.url))
+    return NextResponse.redirect(new URL('/dashboard/companies', req.url))
   }
 
   // Admin-only routes

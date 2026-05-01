@@ -7,6 +7,7 @@ export async function GET(req: NextRequest) {
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   let companies
+
   if (session.role === 'admin') {
     companies = await query(`
       SELECT c.id, c.name, c.country, c.contact, c.email, c.created_at,
@@ -15,10 +16,10 @@ export async function GET(req: NextRequest) {
       FROM companies c
       LEFT JOIN company_members cm ON cm.company_id = c.id
       LEFT JOIN projects p ON p.company_id = c.id
-      GROUP BY c.id
-      ORDER BY c.name ASC
+      GROUP BY c.id ORDER BY c.name ASC
     `)
-  } else if (session.role === 'consultant') {
+  } else {
+    // consultant, client, client-MR — see companies they're members of
     companies = await query(`
       SELECT c.id, c.name, c.country, c.contact, c.email, c.created_at,
              COUNT(DISTINCT cm2.user_id) AS member_count,
@@ -27,11 +28,8 @@ export async function GET(req: NextRequest) {
       JOIN company_members cm ON cm.company_id = c.id AND cm.user_id = $1::uuid
       LEFT JOIN company_members cm2 ON cm2.company_id = c.id
       LEFT JOIN projects p ON p.company_id = c.id
-      GROUP BY c.id
-      ORDER BY c.name ASC
+      GROUP BY c.id ORDER BY c.name ASC
     `, [session.id])
-  } else {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
   return NextResponse.json(companies)

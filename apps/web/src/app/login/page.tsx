@@ -23,7 +23,7 @@ function LoginForm() {
       const data = await res.json()
       if (!res.ok) { setError(data.error || 'Login failed'); return }
       if (data.role === 'client') {
-        router.push('/dashboard/client')
+        router.push('/dashboard/companies')
       } else {
         router.push('/dashboard')
       }

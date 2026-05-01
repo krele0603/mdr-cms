@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { queryOne } from '@/lib/db'
+import { queryOne, query } from '@/lib/db'
 import { verifyPassword, createSession } from '@/lib/auth'
 
 export async function POST(req: NextRequest) {
@@ -10,19 +10,12 @@ export async function POST(req: NextRequest) {
     }
 
     const user = await queryOne<{
-      id: string
-      email: string
-      name: string
-      role: string
+      id: string; email: string; name: string; role: string
       password_hash: string
-      company_id: string | null
-      company_name: string | null
     }>(
-      `SELECT u.id, u.email, u.name, u.role, u.password_hash,
-              u.company_id, c.name as company_name
-       FROM users u
-       LEFT JOIN companies c ON c.id = u.company_id
-       WHERE u.email = $1 AND u.active = true`,
+      `SELECT id, email, name, role, password_hash
+       FROM users
+       WHERE email = $1 AND active = true`,
       [email.toLowerCase().trim()]
     )
 
@@ -35,13 +28,27 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 })
     }
 
+    // Fetch all company memberships
+    const memberships = await query(
+      `SELECT c.id, c.name FROM company_members cm
+       JOIN companies c ON c.id = cm.company_id
+       WHERE cm.user_id = $1::uuid
+       ORDER BY cm.added_at ASC`,
+      [user.id]
+    )
+
+    const company_ids = memberships.map((m: any) => m.id)
+    const company_id = company_ids[0] || null
+    const company_name = memberships[0]?.name || null
+
     const token = await createSession({
       id: user.id,
       email: user.email,
       name: user.name,
       role: user.role as any,
-      company_id: user.company_id,
-      company_name: user.company_name,
+      company_id,
+      company_name,
+      company_ids,
     })
 
     const response = NextResponse.json({ ok: true, role: user.role })
