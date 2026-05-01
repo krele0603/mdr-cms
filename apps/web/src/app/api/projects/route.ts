@@ -10,34 +10,58 @@ export async function GET(req: NextRequest) {
   const search = searchParams.get('search') || ''
 
   let projects
-  if (session.role === 'admin' || session.role === 'consultant') {
+
+  if (session.role === 'admin') {
+    // Admin sees everything
     projects = await query(`
       SELECT p.id, p.name, p.device_name, p.manufacturer_name, p.status,
              p.created_at, p.updated_at, u.name AS created_by_name,
-             dl.name AS list_name,
+             dl.name AS list_name, c.name AS company_name,
              COUNT(DISTINCT pd.id) AS total_docs,
              COUNT(DISTINCT CASE WHEN pd.status = 'approved' THEN pd.id END) AS approved_docs
       FROM projects p
       LEFT JOIN users u ON u.id = p.created_by
       LEFT JOIN document_lists dl ON dl.id = p.list_id
+      LEFT JOIN companies c ON c.id = p.company_id
       LEFT JOIN project_documents pd ON pd.project_id = p.id
       WHERE ($1 = '' OR p.name ILIKE $2 OR p.device_name ILIKE $2)
-      GROUP BY p.id, u.name, dl.name
+      GROUP BY p.id, u.name, dl.name, c.name
       ORDER BY p.updated_at DESC
     `, [search, `%${search}%`])
-  } else {
+  } else if (session.role === 'consultant') {
+    // Consultant sees projects they are members of
     projects = await query(`
       SELECT p.id, p.name, p.device_name, p.manufacturer_name, p.status,
-             p.created_at, p.updated_at, dl.name AS list_name,
+             p.created_at, p.updated_at, u.name AS created_by_name,
+             dl.name AS list_name, c.name AS company_name,
+             COUNT(DISTINCT pd.id) AS total_docs,
+             COUNT(DISTINCT CASE WHEN pd.status = 'approved' THEN pd.id END) AS approved_docs
+      FROM projects p
+      JOIN project_members pm ON pm.project_id = p.id AND pm.user_id = $1::uuid
+      LEFT JOIN users u ON u.id = p.created_by
+      LEFT JOIN document_lists dl ON dl.id = p.list_id
+      LEFT JOIN companies c ON c.id = p.company_id
+      LEFT JOIN project_documents pd ON pd.project_id = p.id
+      WHERE ($2 = '' OR p.name ILIKE $3 OR p.device_name ILIKE $3)
+      GROUP BY p.id, u.name, dl.name, c.name
+      ORDER BY p.updated_at DESC
+    `, [session.id, search, `%${search}%`])
+  } else {
+    // Client / client-MR — scoped to their company + must be a member
+    projects = await query(`
+      SELECT p.id, p.name, p.device_name, p.manufacturer_name, p.status,
+             p.created_at, p.updated_at, dl.name AS list_name, c.name AS company_name,
              COUNT(DISTINCT pd.id) AS total_docs,
              COUNT(DISTINCT CASE WHEN pd.status = 'approved' THEN pd.id END) AS approved_docs
       FROM projects p
       JOIN project_members pm ON pm.project_id = p.id AND pm.user_id = $1::uuid
       LEFT JOIN document_lists dl ON dl.id = p.list_id
+      LEFT JOIN companies c ON c.id = p.company_id
       LEFT JOIN project_documents pd ON pd.project_id = p.id
-      GROUP BY p.id, dl.name
+      WHERE p.company_id = $2::uuid
+      GROUP BY p.id, dl.name, c.name
       ORDER BY p.updated_at DESC
-    `, [session.id])
+    `, [session.id, session.company_id])
   }
 
   return NextResponse.json({ projects })
@@ -50,16 +74,15 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json()
-  const { name, device_name, manufacturer_name, manufacturer_country, list_id } = body
+  const { name, device_name, manufacturer_name, manufacturer_country, list_id, company_id } = body
 
   if (!name?.trim() || !device_name?.trim() || !list_id) {
     return NextResponse.json({ error: 'name, device_name, and list_id are required' }, { status: 400 })
   }
 
-  // Create project
   const project = await queryOne(`
-    INSERT INTO projects (name, device_name, manufacturer_name, manufacturer_country, list_id, created_by, status)
-    VALUES ($1, $2, $3, $4, $5::uuid, $6::uuid, 'draft')
+    INSERT INTO projects (name, device_name, manufacturer_name, manufacturer_country, list_id, created_by, status, company_id)
+    VALUES ($1, $2, $3, $4, $5::uuid, $6::uuid, 'draft', $7::uuid)
     RETURNING id, name, device_name, status
   `, [
     name.trim(),
@@ -68,6 +91,7 @@ export async function POST(req: NextRequest) {
     manufacturer_country?.trim() || null,
     list_id,
     session.id,
+    company_id || null,
   ])
 
   // Add creator as admin member
@@ -98,7 +122,6 @@ export async function POST(req: NextRequest) {
     `, [project.id, v.tag, v.label])
   }
 
-  // Auto-populate device_name and manufacturer_name variables from project fields
   await query(`
     UPDATE project_variables SET value = $1 WHERE project_id = $2::uuid AND tag = '$device_name'
   `, [device_name.trim(), project.id])
@@ -108,7 +131,6 @@ export async function POST(req: NextRequest) {
     `, [manufacturer_name.trim(), project.id])
   }
 
-  // Create documents from list
   interface ListDoc {
     id: string; annex: string; name: string; code: string; template_id: string | null
   }

@@ -10,46 +10,63 @@ interface User {
   role: UserRole
   active: boolean
   created_at: string
+  company_id: string | null
+  company_name: string | null
 }
 
-const ROLES: UserRole[] = ['admin', 'consultant', 'client']
+interface Company {
+  id: string
+  name: string
+  country: string | null
+}
+
+const ROLES: UserRole[] = ['admin', 'consultant', 'client', 'client-MR']
+const CLIENT_ROLES: UserRole[] = ['client', 'client-MR']
 
 export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([])
+  const [companies, setCompanies] = useState<Company[]>([])
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
+  const [showCompanyModal, setShowCompanyModal] = useState(false)
   const [editUser, setEditUser] = useState<User | null>(null)
   const [filterRole, setFilterRole] = useState('')
-  const [form, setForm] = useState({ name: '', email: '', role: 'consultant' as UserRole, password: '' })
+  const [form, setForm] = useState({ name: '', email: '', role: 'consultant' as UserRole, password: '', company_id: '' })
+  const [companyForm, setCompanyForm] = useState({ name: '', country: '', contact: '', email: '' })
   const [formError, setFormError] = useState('')
+  const [companyError, setCompanyError] = useState('')
   const [saving, setSaving] = useState(false)
+  const [savingCompany, setSavingCompany] = useState(false)
 
   async function loadUsers() {
     setLoading(true)
     const res = await fetch('/api/users')
-    if (res.ok) {
-      const data = await res.json()
-      // API returns array directly
-      setUsers(Array.isArray(data) ? data : [])
-    }
+    if (res.ok) setUsers(Array.isArray(await res.json()) ? await res.clone().json() : [])
     setLoading(false)
   }
 
-  useEffect(() => { loadUsers() }, [])
+  async function loadCompanies() {
+    const res = await fetch('/api/companies')
+    if (res.ok) setCompanies(await res.json())
+  }
+
+  useEffect(() => { loadUsers(); loadCompanies() }, [])
 
   function openCreate() {
     setEditUser(null)
-    setForm({ name: '', email: '', role: 'consultant', password: '' })
+    setForm({ name: '', email: '', role: 'consultant', password: '', company_id: '' })
     setFormError('')
     setShowModal(true)
   }
 
   function openEdit(user: User) {
     setEditUser(user)
-    setForm({ name: user.name, email: user.email, role: user.role, password: '' })
+    setForm({ name: user.name, email: user.email, role: user.role, password: '', company_id: user.company_id || '' })
     setFormError('')
     setShowModal(true)
   }
+
+  const needsCompany = CLIENT_ROLES.includes(form.role)
 
   async function handleSave() {
     setFormError('')
@@ -57,6 +74,7 @@ export default function UsersPage() {
     if (!editUser && !form.email.trim()) { setFormError('Email is required'); return }
     if (!editUser && !form.password) { setFormError('Password is required'); return }
     if (!editUser && form.password.length < 8) { setFormError('Password must be at least 8 characters'); return }
+    if (needsCompany && !form.company_id) { setFormError('Company is required for client roles'); return }
 
     setSaving(true)
     try {
@@ -68,6 +86,7 @@ export default function UsersPage() {
           body: JSON.stringify({
             name: form.name,
             role: form.role,
+            company_id: form.company_id || null,
             ...(form.password ? { password: form.password } : {}),
           }),
         })
@@ -75,7 +94,13 @@ export default function UsersPage() {
         res = await fetch('/api/users', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(form),
+          body: JSON.stringify({
+            name: form.name,
+            email: form.email,
+            role: form.role,
+            password: form.password,
+            company_id: form.company_id || null,
+          }),
         })
       }
       const data = await res.json()
@@ -86,6 +111,28 @@ export default function UsersPage() {
       setFormError('Connection error')
     }
     setSaving(false)
+  }
+
+  async function handleSaveCompany() {
+    setCompanyError('')
+    if (!companyForm.name.trim()) { setCompanyError('Company name is required'); return }
+    setSavingCompany(true)
+    try {
+      const res = await fetch('/api/companies', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(companyForm),
+      })
+      const data = await res.json()
+      if (!res.ok) { setCompanyError(data.error || 'Failed to save'); setSavingCompany(false); return }
+      setShowCompanyModal(false)
+      setCompanyForm({ name: '', country: '', contact: '', email: '' })
+      await loadCompanies()
+      setForm(f => ({ ...f, company_id: data.id }))
+    } catch {
+      setCompanyError('Connection error')
+    }
+    setSavingCompany(false)
   }
 
   async function toggleActive(user: User) {
@@ -106,23 +153,20 @@ export default function UsersPage() {
     total: users.length,
     admin: users.filter(u => u.role === 'admin').length,
     consultant: users.filter(u => u.role === 'consultant').length,
-    client: users.filter(u => u.role === 'client').length,
+    client: users.filter(u => u.role === 'client' || u.role === 'client-MR').length,
     inactive: users.filter(u => !u.active).length,
   }
 
   const card = (label: string, val: number, f: string, color?: string) => (
-    <div
-      onClick={() => setFilterRole(f === filterRole ? '' : f)}
-      style={{
-        background: filterRole === f ? 'rgba(78,140,140,0.1)' : '#fff',
-        border: filterRole === f ? '2px solid #4e8c8c' : '0.5px solid rgba(0,0,0,0.1)',
-        borderRadius: 10, padding: '11px 14px', cursor: 'pointer',
-      }}
-    >
+    <div onClick={() => setFilterRole(f === filterRole ? '' : f)}
+      style={{ background: filterRole === f ? 'rgba(78,140,140,0.1)' : '#fff', border: filterRole === f ? '2px solid #4e8c8c' : '0.5px solid rgba(0,0,0,0.1)', borderRadius: 10, padding: '11px 14px', cursor: 'pointer' }}>
       <div style={{ fontSize: 12, color: '#5a6472', marginBottom: 3 }}>{label}</div>
       <div style={{ fontSize: 22, fontWeight: 500, color: color || '#1a1f24' }}>{val}</div>
     </div>
   )
+
+  const inputStyle = { width: '100%', padding: '8px 10px', fontSize: 13, border: '0.5px solid rgba(0,0,0,0.18)', borderRadius: 8, outline: 'none', boxSizing: 'border-box' as const }
+  const labelStyle = { display: 'block', fontSize: 12, color: '#5a6472', marginBottom: 4 }
 
   return (
     <div>
@@ -131,11 +175,14 @@ export default function UsersPage() {
           <h1 style={{ fontSize: 22, fontWeight: 500, marginBottom: 2 }}>Users</h1>
           <p style={{ fontSize: 13, color: '#5a6472' }}>Manage system access and roles</p>
         </div>
-        <button onClick={openCreate} style={{
-          height: 32, padding: '0 14px', fontSize: 13,
-          background: '#4e8c8c', border: 'none',
-          borderRadius: 8, color: '#fff', cursor: 'pointer',
-        }}>+ New user</button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={() => setShowCompanyModal(true)} style={{ height: 32, padding: '0 14px', fontSize: 13, background: 'transparent', border: '0.5px solid rgba(0,0,0,0.2)', borderRadius: 8, color: '#5a6472', cursor: 'pointer' }}>
+            + New company
+          </button>
+          <button onClick={openCreate} style={{ height: 32, padding: '0 14px', fontSize: 13, background: '#4e8c8c', border: 'none', borderRadius: 8, color: '#fff', cursor: 'pointer' }}>
+            + New user
+          </button>
+        </div>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 10, marginBottom: 20 }}>
@@ -153,169 +200,157 @@ export default function UsersPage() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
               <tr style={{ background: '#f5f2ee' }}>
-                {['Name', 'Email', 'Role', 'Status', 'Created', ''].map(h => (
-                  <th key={h} style={{
-                    padding: '9px 14px', textAlign: 'left', fontSize: 11,
-                    fontWeight: 500, color: '#5a6472',
-                    borderBottom: '0.5px solid rgba(0,0,0,0.08)',
-                  }}>{h}</th>
+                {['Name', 'Email', 'Role', 'Company', 'Status', 'Created', ''].map(h => (
+                  <th key={h} style={{ padding: '9px 14px', textAlign: 'left', fontSize: 11, fontWeight: 500, color: '#5a6472', borderBottom: '0.5px solid rgba(0,0,0,0.08)' }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {filtered.map((u, i) => {
-                const rc = ROLE_COLORS[u.role]
+                const rc = ROLE_COLORS[u.role] || ROLE_COLORS.client
                 return (
-                  <tr key={u.id} style={{
-                    borderBottom: i < filtered.length - 1 ? '0.5px solid rgba(0,0,0,0.06)' : 'none',
-                    opacity: u.active ? 1 : 0.5,
-                  }}>
+                  <tr key={u.id} style={{ borderBottom: i < filtered.length - 1 ? '0.5px solid rgba(0,0,0,0.06)' : 'none', opacity: u.active ? 1 : 0.5 }}>
                     <td style={{ padding: '11px 14px', fontWeight: 500 }}>{u.name}</td>
                     <td style={{ padding: '11px 14px', color: '#5a6472' }}>{u.email}</td>
                     <td style={{ padding: '11px 14px' }}>
-                      <span style={{
-                        fontSize: 11, padding: '2px 8px', borderRadius: 4,
-                        background: rc.bg, color: rc.color, border: `0.5px solid ${rc.border}`,
-                      }}>{ROLE_LABELS[u.role]}</span>
+                      <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 4, background: rc.bg, color: rc.color, border: `0.5px solid ${rc.border}` }}>
+                        {ROLE_LABELS[u.role] || u.role}
+                      </span>
+                    </td>
+                    <td style={{ padding: '11px 14px', fontSize: 12, color: u.company_name ? '#1a1f24' : '#ccc' }}>
+                      {u.company_name || '—'}
                     </td>
                     <td style={{ padding: '11px 14px' }}>
-                      <span style={{
-                        fontSize: 11, padding: '2px 8px', borderRadius: 20,
-                        background: u.active ? 'rgba(58,122,90,0.12)' : '#f5f2ee',
-                        color: u.active ? '#3a7a5a' : '#5a6472',
-                        border: `0.5px solid ${u.active ? 'rgba(58,122,90,0.3)' : 'rgba(0,0,0,0.15)'}`,
-                      }}>{u.active ? 'Active' : 'Inactive'}</span>
+                      <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 20, background: u.active ? 'rgba(58,122,90,0.12)' : '#f5f2ee', color: u.active ? '#3a7a5a' : '#5a6472', border: `0.5px solid ${u.active ? 'rgba(58,122,90,0.3)' : 'rgba(0,0,0,0.15)'}` }}>
+                        {u.active ? 'Active' : 'Inactive'}
+                      </span>
                     </td>
                     <td style={{ padding: '11px 14px', fontSize: 11, color: '#8a96a2' }}>
                       {new Date(u.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' })}
                     </td>
                     <td style={{ padding: '11px 14px', textAlign: 'right' }}>
                       <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-                        <button onClick={() => openEdit(u)} style={{
-                          fontSize: 12, color: '#4e8c8c',
-                          background: 'rgba(78,140,140,0.1)',
-                          border: '0.5px solid rgba(78,140,140,0.3)',
-                          borderRadius: 6, padding: '3px 10px', cursor: 'pointer',
-                        }}>Edit</button>
-                        <button onClick={() => toggleActive(u)} style={{
-                          fontSize: 12,
-                          color: u.active ? '#943030' : '#3a7a5a',
-                          background: u.active ? 'rgba(148,48,48,0.08)' : 'rgba(58,122,90,0.08)',
-                          border: `0.5px solid ${u.active ? 'rgba(148,48,48,0.25)' : 'rgba(58,122,90,0.25)'}`,
-                          borderRadius: 6, padding: '3px 10px', cursor: 'pointer',
-                        }}>{u.active ? 'Deactivate' : 'Activate'}</button>
+                        <button onClick={() => openEdit(u)} style={{ fontSize: 12, color: '#4e8c8c', background: 'rgba(78,140,140,0.1)', border: '0.5px solid rgba(78,140,140,0.3)', borderRadius: 6, padding: '3px 10px', cursor: 'pointer' }}>Edit</button>
+                        <button onClick={() => toggleActive(u)} style={{ fontSize: 12, color: u.active ? '#943030' : '#3a7a5a', background: u.active ? 'rgba(148,48,48,0.08)' : 'rgba(58,122,90,0.08)', border: `0.5px solid ${u.active ? 'rgba(148,48,48,0.25)' : 'rgba(58,122,90,0.25)'}`, borderRadius: 6, padding: '3px 10px', cursor: 'pointer' }}>
+                          {u.active ? 'Deactivate' : 'Activate'}
+                        </button>
                       </div>
                     </td>
                   </tr>
                 )
               })}
               {filtered.length === 0 && (
-                <tr><td colSpan={6} style={{ padding: 40, textAlign: 'center', color: '#8a96a2', fontSize: 13 }}>
-                  No users found.
-                </td></tr>
+                <tr><td colSpan={7} style={{ padding: 40, textAlign: 'center', color: '#8a96a2', fontSize: 13 }}>No users found.</td></tr>
               )}
             </tbody>
           </table>
         )}
       </div>
 
-      {/* Modal */}
+      {/* User modal */}
       {showModal && (
-        <div style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          zIndex: 50, padding: 20,
-        }} onClick={() => setShowModal(false)}>
-          <div style={{
-            background: '#fff', borderRadius: 16, width: '100%', maxWidth: 420,
-            border: '0.5px solid rgba(0,0,0,0.12)', overflow: 'hidden',
-            boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
-          }} onClick={e => e.stopPropagation()}>
-            <div style={{
-              padding: '14px 20px', borderBottom: '0.5px solid rgba(0,0,0,0.08)',
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            }}>
-              <h3 style={{ fontSize: 14, fontWeight: 500 }}>
-                {editUser ? 'Edit user' : 'New user'}
-              </h3>
-              <button onClick={() => setShowModal(false)} style={{
-                background: 'none', border: 'none', fontSize: 18,
-                cursor: 'pointer', color: '#5a6472', lineHeight: 1,
-              }}>×</button>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: 20 }}
+          onClick={() => setShowModal(false)}>
+          <div style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 420, border: '0.5px solid rgba(0,0,0,0.12)', overflow: 'hidden', boxShadow: '0 8px 32px rgba(0,0,0,0.12)' }}
+            onClick={e => e.stopPropagation()}>
+            <div style={{ padding: '14px 20px', borderBottom: '0.5px solid rgba(0,0,0,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <h3 style={{ fontSize: 14, fontWeight: 500 }}>{editUser ? 'Edit user' : 'New user'}</h3>
+              <button onClick={() => setShowModal(false)} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#5a6472' }}>×</button>
             </div>
-
             <div style={{ padding: 20 }}>
               {formError && (
-                <div style={{
-                  background: 'rgba(148,48,48,0.08)', border: '0.5px solid rgba(148,48,48,0.3)',
-                  borderRadius: 8, padding: '8px 12px', fontSize: 12,
-                  color: '#943030', marginBottom: 14,
-                }}>{formError}</div>
+                <div style={{ background: 'rgba(148,48,48,0.08)', border: '0.5px solid rgba(148,48,48,0.3)', borderRadius: 8, padding: '8px 12px', fontSize: 12, color: '#943030', marginBottom: 14 }}>{formError}</div>
               )}
-
               <div style={{ marginBottom: 12 }}>
-                <label style={{ display: 'block', fontSize: 12, color: '#5a6472', marginBottom: 4 }}>Full name *</label>
-                <input
-                  value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                  placeholder="e.g. Jana Kovač" autoFocus
-                  style={{ width: '100%', padding: '8px 10px', fontSize: 13, border: '0.5px solid rgba(0,0,0,0.18)', borderRadius: 8, outline: 'none' }}
-                />
+                <label style={labelStyle}>Full name *</label>
+                <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Jana Kovač" autoFocus style={inputStyle} />
               </div>
-
               {!editUser && (
                 <div style={{ marginBottom: 12 }}>
-                  <label style={{ display: 'block', fontSize: 12, color: '#5a6472', marginBottom: 4 }}>Email address *</label>
-                  <input
-                    type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
-                    placeholder="jana@example.com"
-                    style={{ width: '100%', padding: '8px 10px', fontSize: 13, border: '0.5px solid rgba(0,0,0,0.18)', borderRadius: 8, outline: 'none' }}
-                  />
+                  <label style={labelStyle}>Email address *</label>
+                  <input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="jana@example.com" style={inputStyle} />
                 </div>
               )}
-
               <div style={{ marginBottom: 12 }}>
-                <label style={{ display: 'block', fontSize: 12, color: '#5a6472', marginBottom: 4 }}>Role *</label>
-                <select
-                  value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value as UserRole }))}
-                  style={{ width: '100%', padding: '8px 10px', fontSize: 13, border: '0.5px solid rgba(0,0,0,0.18)', borderRadius: 8, outline: 'none', background: '#fff' }}
-                >
+                <label style={labelStyle}>Role *</label>
+                <select value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value as UserRole }))}
+                  style={{ ...inputStyle, background: '#fff' }}>
                   {ROLES.map(r => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
                 </select>
               </div>
-
+              {needsCompany && (
+                <div style={{ marginBottom: 12 }}>
+                  <label style={labelStyle}>Company *</label>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <select value={form.company_id} onChange={e => setForm(f => ({ ...f, company_id: e.target.value }))}
+                      style={{ ...inputStyle, flex: 1 }}>
+                      <option value="">Select company…</option>
+                      {companies.map(c => <option key={c.id} value={c.id}>{c.name}{c.country ? ` (${c.country})` : ''}</option>)}
+                    </select>
+                    <button onClick={() => setShowCompanyModal(true)}
+                      style={{ height: 36, padding: '0 10px', fontSize: 12, background: 'transparent', border: '0.5px solid rgba(0,0,0,0.2)', borderRadius: 8, cursor: 'pointer', whiteSpace: 'nowrap' as const, color: '#5a6472' }}>
+                      + New
+                    </button>
+                  </div>
+                </div>
+              )}
               <div>
-                <label style={{ display: 'block', fontSize: 12, color: '#5a6472', marginBottom: 4 }}>
-                  {editUser ? 'New password (leave blank to keep current)' : 'Password *'}
-                </label>
-                <input
-                  type="password" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
-                  placeholder={editUser ? 'Leave blank to keep current' : 'Min. 8 characters'}
-                  style={{ width: '100%', padding: '8px 10px', fontSize: 13, border: '0.5px solid rgba(0,0,0,0.18)', borderRadius: 8, outline: 'none' }}
-                />
+                <label style={labelStyle}>{editUser ? 'New password (leave blank to keep current)' : 'Password *'}</label>
+                <input type="password" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
+                  placeholder={editUser ? 'Leave blank to keep current' : 'Min. 8 characters'} style={inputStyle} />
               </div>
-
               {editUser && (
                 <div style={{ marginTop: 10, padding: '8px 10px', background: '#f5f2ee', borderRadius: 8, fontSize: 12, color: '#5a6472' }}>
                   Email: {editUser.email}
                 </div>
               )}
             </div>
+            <div style={{ padding: '12px 20px', borderTop: '0.5px solid rgba(0,0,0,0.08)', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button onClick={() => setShowModal(false)} style={{ height: 32, padding: '0 14px', fontSize: 13, background: 'transparent', border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 8, cursor: 'pointer', color: '#5a6472' }}>Cancel</button>
+              <button onClick={handleSave} disabled={saving} style={{ height: 32, padding: '0 14px', fontSize: 13, background: saving ? '#6aacac' : '#4e8c8c', border: 'none', borderRadius: 8, color: '#fff', cursor: saving ? 'not-allowed' : 'pointer' }}>
+                {saving ? 'Saving...' : editUser ? 'Save changes' : 'Create user'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
-            <div style={{
-              padding: '12px 20px', borderTop: '0.5px solid rgba(0,0,0,0.08)',
-              display: 'flex', justifyContent: 'flex-end', gap: 8,
-            }}>
-              <button onClick={() => setShowModal(false)} style={{
-                height: 32, padding: '0 14px', fontSize: 13,
-                background: 'transparent', border: '0.5px solid rgba(0,0,0,0.15)',
-                borderRadius: 8, cursor: 'pointer', color: '#5a6472',
-              }}>Cancel</button>
-              <button onClick={handleSave} disabled={saving} style={{
-                height: 32, padding: '0 14px', fontSize: 13,
-                background: saving ? '#6aacac' : '#4e8c8c',
-                border: 'none', borderRadius: 8, color: '#fff',
-                cursor: saving ? 'not-allowed' : 'pointer',
-              }}>{saving ? 'Saving...' : editUser ? 'Save changes' : 'Create user'}</button>
+      {/* Company modal */}
+      {showCompanyModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 60, padding: 20 }}
+          onClick={() => setShowCompanyModal(false)}>
+          <div style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 380, border: '0.5px solid rgba(0,0,0,0.12)', overflow: 'hidden', boxShadow: '0 8px 32px rgba(0,0,0,0.12)' }}
+            onClick={e => e.stopPropagation()}>
+            <div style={{ padding: '14px 20px', borderBottom: '0.5px solid rgba(0,0,0,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <h3 style={{ fontSize: 14, fontWeight: 500 }}>New company</h3>
+              <button onClick={() => setShowCompanyModal(false)} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#5a6472' }}>×</button>
+            </div>
+            <div style={{ padding: 20 }}>
+              {companyError && (
+                <div style={{ background: 'rgba(148,48,48,0.08)', border: '0.5px solid rgba(148,48,48,0.3)', borderRadius: 8, padding: '8px 12px', fontSize: 12, color: '#943030', marginBottom: 14 }}>{companyError}</div>
+              )}
+              <div style={{ marginBottom: 12 }}>
+                <label style={labelStyle}>Company name *</label>
+                <input value={companyForm.name} onChange={e => setCompanyForm(f => ({ ...f, name: e.target.value }))} placeholder="Acme Medical" autoFocus style={inputStyle} />
+              </div>
+              <div style={{ marginBottom: 12 }}>
+                <label style={labelStyle}>Country</label>
+                <input value={companyForm.country} onChange={e => setCompanyForm(f => ({ ...f, country: e.target.value }))} placeholder="e.g. Norway" style={inputStyle} />
+              </div>
+              <div style={{ marginBottom: 12 }}>
+                <label style={labelStyle}>Contact person</label>
+                <input value={companyForm.contact} onChange={e => setCompanyForm(f => ({ ...f, contact: e.target.value }))} placeholder="e.g. John Smith" style={inputStyle} />
+              </div>
+              <div>
+                <label style={labelStyle}>Contact email</label>
+                <input type="email" value={companyForm.email} onChange={e => setCompanyForm(f => ({ ...f, email: e.target.value }))} placeholder="john@acme.com" style={inputStyle} />
+              </div>
+            </div>
+            <div style={{ padding: '12px 20px', borderTop: '0.5px solid rgba(0,0,0,0.08)', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button onClick={() => setShowCompanyModal(false)} style={{ height: 32, padding: '0 14px', fontSize: 13, background: 'transparent', border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 8, cursor: 'pointer', color: '#5a6472' }}>Cancel</button>
+              <button onClick={handleSaveCompany} disabled={savingCompany} style={{ height: 32, padding: '0 14px', fontSize: 13, background: savingCompany ? '#6aacac' : '#4e8c8c', border: 'none', borderRadius: 8, color: '#fff', cursor: savingCompany ? 'not-allowed' : 'pointer' }}>
+                {savingCompany ? 'Saving...' : 'Create company'}
+              </button>
             </div>
           </div>
         </div>

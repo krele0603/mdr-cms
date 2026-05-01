@@ -17,16 +17,18 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(loginUrl)
   }
 
-  // Client role — restricted access
-  if (user.role === 'client') {
-    if (
-      pathname.startsWith('/dashboard/client') ||
-      pathname.startsWith('/dashboard/projects') ||
-      pathname.startsWith('/api/')
-    ) {
+  // Client / client-MR roles — allowed paths
+  if (user.role === 'client' || user.role === 'client-MR') {
+    const allowed = [
+      '/dashboard/client',
+      '/dashboard/projects',
+      '/dashboard/companies',
+      '/dashboard/eqms',
+      '/api/',
+    ]
+    if (allowed.some(p => pathname.startsWith(p))) {
       return NextResponse.next()
     }
-    // Everything else → client home
     return NextResponse.redirect(new URL('/dashboard/client', req.url))
   }
 

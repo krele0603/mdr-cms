@@ -148,19 +148,17 @@ export default function ProjectDetailPage() {
   const [newDocCode, setNewDocCode] = useState('')
   const [addingDoc, setAddingDoc] = useState(false)
   const [trackerOpen, setTrackerOpen] = useState(false)
-  const [projectFiles, setProjectFiles] = useState<Record<string, string[]>>({}) // annex -> filenames
+  const [projectFiles, setProjectFiles] = useState<Record<string, string[]>>({})
   const [allProjectFiles, setAllProjectFiles] = useState<any[]>([])
   const [saving, setSaving] = useState<Record<string, boolean>>({})
   const [sessionRole, setSessionRole] = useState<string>('')
 
-  // Template picker
   const [showTemplatePicker, setShowTemplatePicker] = useState(false)
   const [templates, setTemplates] = useState<any[]>([])
   const [loadingTemplates, setLoadingTemplates] = useState(false)
   const [addingTemplate, setAddingTemplate] = useState(false)
   const [templateSearch, setTemplateSearch] = useState('')
 
-  // Members
   const [showAddMember, setShowAddMember] = useState(false)
   const [userSearch, setUserSearch] = useState('')
   const [userResults, setUserResults] = useState<User[]>([])
@@ -304,6 +302,7 @@ export default function ProjectDetailPage() {
   if (loading) return <div style={{padding:40,textAlign:'center',color:'#9b9991',fontSize:13}}>Loading...</div>
   if (!project) return null
 
+  const isClient = sessionRole === 'client'
   const annexDocs = docs.filter((d: any) => d.annex === activeAnnex)
   const annexCounts = ANNEXES.reduce((acc, a) => ({ ...acc, [a]: docs.filter((d:any) => d.annex === a).length }), {} as Record<string,number>)
   const total = docs.length
@@ -350,17 +349,21 @@ export default function ProjectDetailPage() {
             </div>
           </div>
           <div style={{display:'flex',gap:8,flexShrink:0}}>
-            <button onClick={() => setEditMode(!editMode)} style={{height:30,padding:'0 12px',fontSize:12,background:editMode?'#185FA5':'transparent',border:editMode?'0.5px solid #185FA5':'0.5px solid rgba(0,0,0,0.2)',borderRadius:8,color:editMode?'#fff':'#1a1a18',cursor:'pointer'}}>
-              {editMode ? 'Done editing' : 'Edit project'}
-            </button>
-            <select value={project.status} onChange={e => updateProjectStatus(e.target.value)}
-              style={{height:30,padding:'0 10px',fontSize:12,border:'0.5px solid rgba(0,0,0,0.2)',borderRadius:8,background:'#fff',cursor:'pointer'}}>
-              <option value="draft">Draft</option>
-              <option value="active">Active</option>
-              <option value="review">Under review</option>
-              <option value="approved">Approved</option>
-              <option value="archived">Archived</option>
-            </select>
+            {!isClient && (
+              <button onClick={() => setEditMode(!editMode)} style={{height:30,padding:'0 12px',fontSize:12,background:editMode?'#185FA5':'transparent',border:editMode?'0.5px solid #185FA5':'0.5px solid rgba(0,0,0,0.2)',borderRadius:8,color:editMode?'#fff':'#1a1a18',cursor:'pointer'}}>
+                {editMode ? 'Done editing' : 'Edit project'}
+              </button>
+            )}
+            {!isClient && (
+              <select value={project.status} onChange={e => updateProjectStatus(e.target.value)}
+                style={{height:30,padding:'0 10px',fontSize:12,border:'0.5px solid rgba(0,0,0,0.2)',borderRadius:8,background:'#fff',cursor:'pointer'}}>
+                <option value="draft">Draft</option>
+                <option value="active">Active</option>
+                <option value="review">Under review</option>
+                <option value="approved">Approved</option>
+                <option value="archived">Archived</option>
+              </select>
+            )}
           </div>
         </div>
         <div style={{display:'grid',gridTemplateColumns:'repeat(4,minmax(0,1fr))',gap:10,paddingTop:12,borderTop:'0.5px solid rgba(0,0,0,0.08)'}}>
@@ -381,7 +384,7 @@ export default function ProjectDetailPage() {
       <div style={{background:'#fff',border:'0.5px solid rgba(0,0,0,0.1)',borderRadius:12,padding:'14px 20px',marginBottom:14}}>
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12}}>
           <div style={{fontSize:13,fontWeight:500}}>Members</div>
-          <button onClick={() => setShowAddMember(v => !v)} style={{height:26,padding:'0 10px',fontSize:11,background:'#185FA5',border:'none',borderRadius:6,color:'#fff',cursor:'pointer'}}>+ Add member</button>
+          {!isClient && <button onClick={() => setShowAddMember(v => !v)} style={{height:26,padding:'0 10px',fontSize:11,background:'#185FA5',border:'none',borderRadius:6,color:'#fff',cursor:'pointer'}}>+ Add member</button>}
         </div>
         {showAddMember && (
           <div style={{marginBottom:12,position:'relative'}}>
@@ -425,7 +428,7 @@ export default function ProjectDetailPage() {
                     <div style={{fontSize:11,fontWeight:500}}>{m.name}</div>
                     <div style={{fontSize:10,color:'#9b9991'}}>{m.user_role}</div>
                   </div>
-                  <button onClick={() => removeMember(m.user_id)} style={{background:'none',border:'none',color:'#9b9991',cursor:'pointer',fontSize:14,lineHeight:1,padding:'0 2px',marginLeft:2}} title="Remove member">×</button>
+                  {!isClient && <button onClick={() => removeMember(m.user_id)} style={{background:'none',border:'none',color:'#9b9991',cursor:'pointer',fontSize:14,lineHeight:1,padding:'0 2px',marginLeft:2}} title="Remove member">×</button>}
                 </div>
               )
             })}
@@ -638,6 +641,7 @@ export default function ProjectDetailPage() {
                   [...adocs.map((d, i) => {
                     const s = DOC_STATUS[d.status] || DOC_STATUS.draft
                     const isSaving = saving[d.id]
+                    const cf = COLOR_FLAGS[d.color_flag || 'none']
                     return (
                       <tr key={d.id} style={{ borderBottom: '0.5px solid rgba(0,0,0,0.05)', background: isSaving ? '#fafffe' : '#fff' }}>
                         <td style={{ padding: '9px 12px', verticalAlign: 'middle', fontSize: 11, whiteSpace: 'nowrap' as const, borderRight: '0.5px solid rgba(0,0,0,0.05)', color: i === 0 ? '#1a1a18' : 'transparent', fontWeight: i === 0 ? 500 : 400 }}>
@@ -653,22 +657,24 @@ export default function ProjectDetailPage() {
                           <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 4, background: s.bg, color: s.color, border: `0.5px solid ${s.border}`, whiteSpace: 'nowrap' as const }}>{s.label}</span>
                         </td>
                         <td style={{ padding: '9px 12px', verticalAlign: 'middle', minWidth: 60 }}>
-                          <EditableCell value={d.revision || ''} placeholder="1.0" mono onSave={v => patchDoc(d.id, { revision: v })} />
+                          {isClient
+                            ? <span style={{ fontSize: 12, color: d.revision ? '#1a1a18' : '#ccc', fontFamily: 'monospace' }}>{d.revision || '—'}</span>
+                            : <EditableCell value={d.revision || ''} placeholder="1.0" mono onSave={v => patchDoc(d.id, { revision: v })} />}
                         </td>
                         <td style={{ padding: '9px 12px', verticalAlign: 'middle' }}>
-                          <ColorPicker value={d.color_flag} onSave={v => patchDoc(d.id, { color_flag: v || null })} />
+                          {isClient
+                            ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '2px 7px', borderRadius: 12, background: cf.bg, border: `0.5px solid ${cf.border}`, fontSize: 11, color: cf.color }}><span style={{ width: 7, height: 7, borderRadius: '50%', background: cf.dot }} />{cf.label}</span>
+                            : <ColorPicker value={d.color_flag} onSave={v => patchDoc(d.id, { color_flag: v || null })} />}
                         </td>
                         <td style={{ padding: '9px 12px', verticalAlign: 'middle', minWidth: 160 }}>
-                          <EditableCell value={d.tracker_comment || ''} placeholder="Add comment…" onSave={v => patchDoc(d.id, { tracker_comment: v })} />
+                          {isClient
+                            ? <span style={{ fontSize: 12, color: d.tracker_comment ? '#1a1a18' : '#ccc' }}>{d.tracker_comment || '—'}</span>
+                            : <EditableCell value={d.tracker_comment || ''} placeholder="Add comment…" onSave={v => patchDoc(d.id, { tracker_comment: v })} />}
                         </td>
                         <td style={{ padding: '9px 12px', verticalAlign: 'middle', minWidth: 130 }}>
-                          <AssignedPicker
-                            value={d.assigned_to} name={d.assigned_name} members={members}
-                            onSave={(uid, name) => {
-                              patchDoc(d.id, { assigned_to: uid || null })
-                              setTrackerDocs(prev => prev.map(td => td.id === d.id ? { ...td, assigned_to: uid || null, assigned_name: name || null } : td))
-                            }}
-                          />
+                          {isClient
+                            ? <span style={{ fontSize: 12, color: d.assigned_name ? '#1a1a18' : '#ccc' }}>{d.assigned_name || 'Unassigned'}</span>
+                            : <AssignedPicker value={d.assigned_to} name={d.assigned_name} members={members} onSave={(uid, name) => { patchDoc(d.id, { assigned_to: uid || null }); setTrackerDocs(prev => prev.map(td => td.id === d.id ? { ...td, assigned_to: uid || null, assigned_name: name || null } : td)) }} />}
                         </td>
                       </tr>
                     )
@@ -690,7 +696,6 @@ export default function ProjectDetailPage() {
                     </tr>
                   ))]
                 ))}
-
               </tbody>
             </table>
           </div>

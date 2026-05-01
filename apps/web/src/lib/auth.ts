@@ -3,7 +3,6 @@ import { cookies } from 'next/headers'
 import { NextRequest } from 'next/server'
 import bcrypt from 'bcryptjs'
 import type { SessionUser, UserRole } from './auth-types'
-
 export type { SessionUser, UserRole }
 export { ROLE_LABELS, ROLE_COLORS, requireRole } from './auth-types'
 
