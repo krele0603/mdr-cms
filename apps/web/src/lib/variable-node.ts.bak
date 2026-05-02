@@ -125,9 +125,13 @@ export const RiskMatrixNode = Node.create({
         try {
           const listRes = await fetch('/api/projects/' + projectId + '/fmea')
           if (!listRes.ok) throw new Error('no fmea')
-          const fmeaData = await listRes.json()
-          // API returns { fmea, sheets, criteria, ... }
-          if (!fmeaData.fmea) throw new Error('no fmea doc')
+          const fmeaList = await listRes.json()
+          const fmeaDoc = Array.isArray(fmeaList) ? fmeaList[0] : fmeaList
+          if (!fmeaDoc || !fmeaDoc.id) throw new Error('no fmea doc')
+
+          const fmeaRes = await fetch('/api/projects/' + projectId + '/fmea/' + fmeaDoc.id)
+          if (!fmeaRes.ok) throw new Error('fmea fetch failed')
+          const fmeaData = await fmeaRes.json()
 
           const criteria = fmeaData.criteria || {}
           const sheets = fmeaData.sheets || []

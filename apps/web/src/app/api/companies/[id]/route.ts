@@ -30,6 +30,15 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     [params.id]
   )
 
+  // Load project assignments for each member
+  const memberProjectAssignments = await query(
+    `SELECT pm.user_id, pm.project_id, pm.access_level, p.name AS project_name
+     FROM project_members pm
+     JOIN projects p ON p.id = pm.project_id
+     WHERE p.company_id = $1::uuid AND pm.role = 'client'`,
+    [params.id]
+  )
+
   const projects = await query(
     `SELECT p.id, p.name, p.device_name, p.status, p.updated_at,
             dl.name AS list_name,
@@ -44,7 +53,13 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     [params.id]
   )
 
-  return NextResponse.json({ company, members, projects })
+  // Attach project assignments to members
+  const membersWithProjects = members.map((m: any) => ({
+    ...m,
+    project_assignments: memberProjectAssignments.filter((a: any) => a.user_id === m.id)
+  }))
+
+  return NextResponse.json({ company, members: membersWithProjects, projects })
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
