@@ -49,11 +49,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Email, name and password are required' }, { status: 400 })
   }
 
-  // client and client-MR must have a company
-  if (['client', 'client-MR'].includes(role) && !company_id) {
-    return NextResponse.json({ error: 'Company is required for client roles' }, { status: 400 })
-  }
-
   const existing = await queryOne(
     `SELECT id FROM users WHERE email = $1`,
     [email.toLowerCase().trim()]

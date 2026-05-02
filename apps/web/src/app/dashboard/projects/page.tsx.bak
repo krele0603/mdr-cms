@@ -126,7 +126,10 @@ export default function ProjectsPage() {
           <h1 style={{ fontSize: 22, fontWeight: 500, marginBottom: 2 }}>Projects</h1>
           <p style={{ fontSize: 13, color: '#6b6a64' }}>MDR technical file projects</p>
         </div>
-
+        <button onClick={() => { setForm(EMPTY_FORM); setFormError(''); setShowModal(true) }}
+          style={{ height: 32, padding: '0 14px', fontSize: 13, background: '#185FA5', border: '0.5px solid #185FA5', borderRadius: 8, color: '#fff', cursor: 'pointer' }}>
+          + New project
+        </button>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10, marginBottom: 20 }}>

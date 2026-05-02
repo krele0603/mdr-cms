@@ -138,7 +138,7 @@ export default function ClientProjectPage() {
   const [loading, setLoading] = useState(true)
   const [sessionRole, setSessionRole] = useState('')
   const [activeAnnex, setActiveAnnex] = useState('Annex I')
-  const [trackerOpen, setTrackerOpen] = useState(true)
+  const [trackerOpen, setTrackerOpen] = useState(false)
   const [saving, setSaving] = useState<Record<string, boolean>>({})
 
   useEffect(() => {

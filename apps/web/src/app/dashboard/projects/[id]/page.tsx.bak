@@ -146,7 +146,7 @@ export default function ProjectDetailPage() {
   const [newDocName, setNewDocName] = useState('')
   const [newDocCode, setNewDocCode] = useState('')
   const [addingDoc, setAddingDoc] = useState(false)
-  const [trackerOpen, setTrackerOpen] = useState(true)
+  const [trackerOpen, setTrackerOpen] = useState(false)
   const [projectFiles, setProjectFiles] = useState<Record<string, string[]>>({})
   const [allProjectFiles, setAllProjectFiles] = useState<any[]>([])
   const [saving, setSaving] = useState<Record<string, boolean>>({})

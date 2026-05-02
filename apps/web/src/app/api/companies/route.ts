@@ -7,7 +7,6 @@ export async function GET(req: NextRequest) {
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   let companies
-
   if (session.role === 'admin') {
     companies = await query(`
       SELECT c.id, c.name, c.country, c.contact, c.email, c.created_at,
@@ -17,7 +16,7 @@ export async function GET(req: NextRequest) {
       LEFT JOIN company_members cm ON cm.company_id = c.id
       LEFT JOIN projects p ON p.company_id = c.id
       GROUP BY c.id ORDER BY c.name ASC
-    `)
+    `, [])
   } else {
     // consultant, client, client-MR — see companies they're members of
     companies = await query(`
@@ -31,7 +30,6 @@ export async function GET(req: NextRequest) {
       GROUP BY c.id ORDER BY c.name ASC
     `, [session.id])
   }
-
   return NextResponse.json(companies)
 }
 
@@ -42,10 +40,8 @@ export async function POST(req: NextRequest) {
   }
   const { name, country, contact, email } = await req.json()
   if (!name?.trim()) return NextResponse.json({ error: 'Name is required' }, { status: 400 })
-
   const existing = await queryOne(`SELECT id FROM companies WHERE name ILIKE $1`, [name.trim()])
   if (existing) return NextResponse.json({ error: 'Company already exists' }, { status: 409 })
-
   const company = await queryOne(
     `INSERT INTO companies (name, country, contact, email)
      VALUES ($1, $2, $3, $4)
