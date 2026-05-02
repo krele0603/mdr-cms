@@ -286,7 +286,7 @@ export default function TraceabilityPage() {
 
     // ── Sheets 3+: Verification (one per list) ──
     lists.forEach(list => {
-      const sheetName = `Verify ${list.type === 'system' ? 'System' : (list.name || 'SW').slice(0, 20)}`
+      const sheetName = `Verify: ${list.type === 'system' ? 'System' : (list.name || 'SW').slice(0, 20)}`
       const wsV = wb.addWorksheet(sheetName)
       const baseCols = [{ width: 14 }, { width: 48 }, { width: 28 }, { width: 32 }, { width: 28 }]
       wsV.columns = [...baseCols, ...list.extraCols.map(() => ({ width: 24 }))]
