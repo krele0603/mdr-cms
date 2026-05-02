@@ -107,6 +107,14 @@ export default function CompanyPage() {
     load()
   }
 
+  async function deleteCompany() {
+    if (!confirm(`Delete company "${company.name}"?\n\nThis will remove all members and eQMS documents. Projects will be unlinked but not deleted.`)) return
+    if (!confirm(`CONFIRM: Permanently delete "${company.name}"? This cannot be undone.`)) return
+    const res = await fetch(`/api/companies/${id}`, { method: 'DELETE' })
+    if (!res.ok) { alert('Failed to delete company'); return }
+    router.push('/dashboard/companies')
+  }
+
   async function assignProject(memberId: string, projectId: string, accessLevel: string) {
     setSavingAccess(memberId + projectId)
     await fetch(`/api/companies/${id}/members/${memberId}/projects`, {
@@ -161,6 +169,14 @@ export default function CompanyPage() {
               {company.email && <span>✉️ {company.email}</span>}
             </div>
           </div>
+          {isAdmin && (
+            <button onClick={deleteCompany}
+              style={{ height: 28, padding: '0 12px', fontSize: 12, background: 'transparent', border: '0.5px solid rgba(148,48,48,0.3)', borderRadius: 6, color: '#943030', cursor: 'pointer' }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(148,48,48,0.06)' }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}>
+              Delete company
+            </button>
+          )}
         </div>
       </div>
 

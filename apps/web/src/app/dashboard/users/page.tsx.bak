@@ -148,17 +148,6 @@ export default function UsersPage() {
     loadUsers()
   }
 
-  async function deleteUser(user: User) {
-    if (!confirm(`Permanently delete ${user.name}?\n\nThis cannot be undone. All their project and company memberships will be removed.`)) return
-    const res = await fetch(`/api/users/${user.id}`, { method: 'DELETE' })
-    if (!res.ok) {
-      const data = await res.json()
-      alert(data.error || 'Failed to delete user')
-      return
-    }
-    loadUsers()
-  }
-
   const filtered = filterRole === '__inactive'
     ? users.filter(u => !u.active)
     : users.filter(u => !filterRole || u.role === filterRole)
@@ -248,7 +237,6 @@ export default function UsersPage() {
                         <button onClick={() => toggleActive(u)} style={{ fontSize: 12, color: u.active ? '#943030' : '#3a7a5a', background: u.active ? 'rgba(148,48,48,0.08)' : 'rgba(58,122,90,0.08)', border: `0.5px solid ${u.active ? 'rgba(148,48,48,0.25)' : 'rgba(58,122,90,0.25)'}`, borderRadius: 6, padding: '3px 10px', cursor: 'pointer' }}>
                           {u.active ? 'Deactivate' : 'Activate'}
                         </button>
-                        <button onClick={() => deleteUser(u)} style={{ fontSize: 12, color: '#943030', background: 'transparent', border: '0.5px solid rgba(148,48,48,0.25)', borderRadius: 6, padding: '3px 10px', cursor: 'pointer' }}>Delete</button>
                       </div>
                     </td>
                   </tr>

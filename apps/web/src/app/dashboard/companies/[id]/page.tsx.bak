@@ -20,13 +20,19 @@ const DOC_STATUS: Record<string, { bg: string; color: string; border: string; la
 }
 
 const ROLE_STYLES: Record<string, { bg: string; color: string; border: string }> = {
-  admin:      { bg: '#EEEDFE', color: '#3C3489', border: '#AFA9EC' },
-  consultant: { bg: '#E6F1FB', color: '#0C447C', border: '#85B7EB' },
-  client:     { bg: '#EAF3DE', color: '#27500A', border: '#97C459' },
-  'client-MR':{ bg: '#FEF0E0', color: '#7A3B00', border: '#F5B97A' },
+  admin:       { bg: '#EEEDFE', color: '#3C3489', border: '#AFA9EC' },
+  consultant:  { bg: '#E6F1FB', color: '#0C447C', border: '#85B7EB' },
+  client:      { bg: '#EAF3DE', color: '#27500A', border: '#97C459' },
+  'client-MR': { bg: '#FEF0E0', color: '#7A3B00', border: '#F5B97A' },
 }
 
-interface Member { id: string; name: string; email: string; role: string; added_at: string }
+const ACCESS_STYLES: Record<string, { bg: string; color: string; border: string; label: string }> = {
+  view: { bg: '#E6F1FB', color: '#0C447C', border: '#85B7EB', label: 'View' },
+  edit: { bg: '#EAF3DE', color: '#27500A', border: '#97C459', label: 'Edit' },
+}
+
+interface ProjectAssignment { project_id: string; project_name: string; access_level: string }
+interface Member { id: string; name: string; email: string; role: string; added_at: string; project_assignments: ProjectAssignment[] }
 interface Project { id: string; name: string; device_name: string; status: string; updated_at: string; list_name: string; total_docs: number; approved_docs: number }
 interface User { id: string; name: string; email: string; role: string }
 
@@ -44,6 +50,9 @@ export default function CompanyPage() {
   const [userSearch, setUserSearch] = useState('')
   const [userResults, setUserResults] = useState<User[]>([])
   const [searchingUsers, setSearchingUsers] = useState(false)
+  const [expandedMember, setExpandedMember] = useState<string | null>(null)
+  const [assigningProject, setAssigningProject] = useState<string | null>(null) // memberId
+  const [savingAccess, setSavingAccess] = useState<string | null>(null)
 
   useEffect(() => {
     fetch('/api/auth/session').then(r => r.json()).then(d => setSessionRole(d?.user?.role || ''))
@@ -71,8 +80,8 @@ export default function CompanyPage() {
     if (!res.ok) { router.push('/dashboard/companies'); return }
     const data = await res.json()
     setCompany(data.company)
-    setMembers(data.members)
-    setProjects(data.projects)
+    setMembers(data.members || [])
+    setProjects(data.projects || [])
     setLoading(false)
   }
 
@@ -86,13 +95,51 @@ export default function CompanyPage() {
   }
 
   async function removeMember(userId: string) {
-    if (!confirm('Remove this member from the company?')) return
+    if (!confirm('Remove this member from the company? This will also remove all their project assignments.')) return
     await fetch(`/api/companies/${id}/members?user_id=${userId}`, { method: 'DELETE' })
+    // Also remove all project assignments
+    const member = members.find(m => m.id === userId)
+    if (member) {
+      for (const a of member.project_assignments) {
+        await fetch(`/api/companies/${id}/members/${userId}/projects?project_id=${a.project_id}`, { method: 'DELETE' })
+      }
+    }
+    load()
+  }
+
+  async function assignProject(memberId: string, projectId: string, accessLevel: string) {
+    setSavingAccess(memberId + projectId)
+    await fetch(`/api/companies/${id}/members/${memberId}/projects`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project_id: projectId, access_level: accessLevel }),
+    })
+    setSavingAccess(null)
+    setAssigningProject(null)
+    load()
+  }
+
+  async function removeProjectAssignment(memberId: string, projectId: string) {
+    setSavingAccess(memberId + projectId)
+    await fetch(`/api/companies/${id}/members/${memberId}/projects?project_id=${projectId}`, { method: 'DELETE' })
+    setSavingAccess(null)
+    load()
+  }
+
+  async function toggleAccessLevel(memberId: string, projectId: string, current: string) {
+    const next = current === 'view' ? 'edit' : 'view'
+    setSavingAccess(memberId + projectId)
+    await fetch(`/api/companies/${id}/members/${memberId}/projects`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project_id: projectId, access_level: next }),
+    })
+    setSavingAccess(null)
     load()
   }
 
   if (loading) return <div style={{ padding: 40, textAlign: 'center', color: '#9b9991', fontSize: 13 }}>Loading…</div>
   if (!company) return null
+
+  const isAdmin = sessionRole === 'admin'
 
   return (
     <div>
@@ -123,7 +170,7 @@ export default function CompanyPage() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 10 }}>
           {LEVEL_META.map(m => (
             <Link key={m.level} href={`/dashboard/companies/${id}/eqms/${m.level}`}
-              style={{ background: '#fff', border: `0.5px solid ${m.border}`, borderRadius: 10, padding: '14px 16px', textDecoration: 'none', display: 'block', transition: 'box-shadow 0.15s' }}
+              style={{ background: '#fff', border: `0.5px solid ${m.border}`, borderRadius: 10, padding: '14px 16px', textDecoration: 'none', display: 'block' }}
               onMouseEnter={e => ((e.currentTarget as HTMLElement).style.boxShadow = '0 4px 12px rgba(0,0,0,0.08)')}
               onMouseLeave={e => ((e.currentTarget as HTMLElement).style.boxShadow = 'none')}>
               <div style={{ fontSize: 18, marginBottom: 6 }}>{m.icon}</div>
@@ -138,15 +185,12 @@ export default function CompanyPage() {
       <div style={{ marginBottom: 14 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
           <div style={{ fontSize: 13, fontWeight: 500, color: '#1a1a18' }}>TFBuilder Projects</div>
-          {sessionRole === 'admin' && (
-            <Link href={`/dashboard/projects?company=${id}`}
-              style={{ fontSize: 12, color: '#185FA5', textDecoration: 'none' }}>View all →</Link>
+          {isAdmin && (
+            <Link href={`/dashboard/projects?company=${id}`} style={{ fontSize: 12, color: '#185FA5', textDecoration: 'none' }}>View all →</Link>
           )}
         </div>
         {projects.length === 0 ? (
-          <div style={{ background: '#fff', border: '0.5px solid rgba(0,0,0,0.1)', borderRadius: 12, padding: 30, textAlign: 'center', color: '#9b9991', fontSize: 13 }}>
-            No TF projects yet.
-          </div>
+          <div style={{ background: '#fff', border: '0.5px solid rgba(0,0,0,0.1)', borderRadius: 12, padding: 30, textAlign: 'center', color: '#9b9991', fontSize: 13 }}>No TF projects yet.</div>
         ) : (
           <div style={{ background: '#fff', border: '0.5px solid rgba(0,0,0,0.1)', borderRadius: 12, overflow: 'hidden' }}>
             {projects.map((p, i) => {
@@ -177,21 +221,27 @@ export default function CompanyPage() {
         )}
       </div>
 
-      {/* Members */}
-      <div style={{ background: '#fff', border: '0.5px solid rgba(0,0,0,0.1)', borderRadius: 12, padding: '14px 20px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-          <div style={{ fontSize: 13, fontWeight: 500 }}>Members</div>
-          {sessionRole === 'admin' && (
-            <button onClick={() => setShowAddMember(v => !v)} style={{ height: 26, padding: '0 10px', fontSize: 11, background: '#4e8c8c', border: 'none', borderRadius: 6, color: '#fff', cursor: 'pointer' }}>+ Add member</button>
+      {/* Members & Access Management */}
+      <div style={{ background: '#fff', border: '0.5px solid rgba(0,0,0,0.1)', borderRadius: 12, overflow: 'hidden' }}>
+        <div style={{ padding: '12px 20px', borderBottom: '0.5px solid rgba(0,0,0,0.08)', background: '#f8f7f4', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ fontSize: 13, fontWeight: 500 }}>Members & Project Access</div>
+          {isAdmin && (
+            <button onClick={() => setShowAddMember(v => !v)}
+              style={{ height: 28, padding: '0 12px', fontSize: 11, background: '#4e8c8c', border: 'none', borderRadius: 6, color: '#fff', cursor: 'pointer' }}>
+              + Add member
+            </button>
           )}
         </div>
-        {showAddMember && (
-          <div style={{ marginBottom: 12, position: 'relative' }}>
-            <input value={userSearch} onChange={e => setUserSearch(e.target.value)} placeholder="Search consultants or clients…" autoFocus
+
+        {/* Add member search */}
+        {showAddMember && isAdmin && (
+          <div style={{ padding: '12px 20px', borderBottom: '0.5px solid rgba(0,0,0,0.08)', background: '#fafaf8', position: 'relative' }}>
+            <div style={{ fontSize: 11, color: '#6b6a64', marginBottom: 6 }}>Search for a user to add to this company:</div>
+            <input value={userSearch} onChange={e => setUserSearch(e.target.value)} placeholder="Search by name or email…" autoFocus
               style={{ width: '100%', height: 32, padding: '0 10px', fontSize: 12, border: '0.5px solid rgba(0,0,0,0.2)', borderRadius: 8, outline: 'none', boxSizing: 'border-box' as const }} />
             {searchingUsers && <div style={{ fontSize: 11, color: '#9b9991', padding: '6px 0' }}>Searching…</div>}
             {userResults.length > 0 && (
-              <div style={{ position: 'absolute', top: 36, left: 0, right: 0, zIndex: 20, background: '#fff', border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.1)', overflow: 'hidden' }}>
+              <div style={{ position: 'absolute', top: 76, left: 20, right: 20, zIndex: 20, background: '#fff', border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.1)', overflow: 'hidden' }}>
                 {userResults.map(u => {
                   const rs = ROLE_STYLES[u.role] || ROLE_STYLES.client
                   return (
@@ -209,26 +259,136 @@ export default function CompanyPage() {
                 })}
               </div>
             )}
-            {userSearch && !searchingUsers && userResults.length === 0 && <div style={{ fontSize: 11, color: '#9b9991', padding: '6px 0' }}>No users found.</div>}
+            {userSearch && !searchingUsers && userResults.length === 0 && (
+              <div style={{ fontSize: 11, color: '#9b9991', padding: '6px 0' }}>No users found.</div>
+            )}
           </div>
         )}
+
+        {/* Member list */}
         {members.length === 0 ? (
-          <div style={{ fontSize: 12, color: '#9b9991' }}>No members yet.</div>
+          <div style={{ padding: 24, textAlign: 'center', fontSize: 12, color: '#9b9991' }}>No members yet. Add members to assign them to projects.</div>
         ) : (
-          <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 8 }}>
-            {members.map(m => {
+          <div>
+            {members.map((m, mi) => {
               const rs = ROLE_STYLES[m.role] || ROLE_STYLES.client
+              const isExpanded = expandedMember === m.id
+              const isClient = m.role === 'client' || m.role === 'client-MR'
+              const assignedProjectIds = new Set(m.project_assignments.map(a => a.project_id))
+              const unassignedProjects = projects.filter(p => !assignedProjectIds.has(p.id))
+
               return (
-                <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '5px 10px', borderRadius: 20, background: '#f8f7f4', border: '0.5px solid rgba(0,0,0,0.1)' }}>
-                  <div style={{ width: 22, height: 22, borderRadius: '50%', background: rs.bg, color: rs.color, border: `0.5px solid ${rs.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 600 }}>
-                    {m.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
+                <div key={m.id} style={{ borderBottom: mi < members.length - 1 ? '0.5px solid rgba(0,0,0,0.06)' : 'none' }}>
+                  {/* Member row */}
+                  <div style={{ padding: '12px 20px', display: 'flex', alignItems: 'center', gap: 12, background: isExpanded ? '#fafaf8' : '#fff' }}>
+                    <div style={{ width: 32, height: 32, borderRadius: '50%', background: rs.bg, color: rs.color, border: `0.5px solid ${rs.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 600, flexShrink: 0 }}>
+                      {m.name.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2)}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ fontSize: 13, fontWeight: 500 }}>{m.name}</span>
+                        <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 3, background: rs.bg, color: rs.color, border: `0.5px solid ${rs.border}` }}>{m.role}</span>
+                      </div>
+                      <div style={{ fontSize: 11, color: '#9b9991', marginTop: 1 }}>{m.email}</div>
+                    </div>
+                    {/* Project assignment summary */}
+                    {isClient && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                        <span style={{ fontSize: 11, color: '#6b6a64' }}>
+                          {m.project_assignments.length === 0 ? 'No projects' : `${m.project_assignments.length} project${m.project_assignments.length !== 1 ? 's' : ''}`}
+                        </span>
+                        {isAdmin && (
+                          <button onClick={() => setExpandedMember(isExpanded ? null : m.id)}
+                            style={{ height: 24, padding: '0 10px', fontSize: 11, background: isExpanded ? '#185FA5' : 'transparent', border: `0.5px solid ${isExpanded ? '#185FA5' : 'rgba(0,0,0,0.2)'}`, borderRadius: 5, color: isExpanded ? '#fff' : '#5a6472', cursor: 'pointer' }}>
+                            {isExpanded ? 'Close' : 'Manage access'}
+                          </button>
+                        )}
+                      </div>
+                    )}
+                    {isAdmin && (
+                      <button onClick={() => removeMember(m.id)}
+                        style={{ background: 'none', border: 'none', color: '#ccc', cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: '0 2px', flexShrink: 0 }}
+                        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#F09595' }}
+                        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = '#ccc' }}>
+                        ×
+                      </button>
+                    )}
                   </div>
-                  <div>
-                    <div style={{ fontSize: 11, fontWeight: 500 }}>{m.name}</div>
-                    <div style={{ fontSize: 10, color: '#9b9991' }}>{m.role}</div>
-                  </div>
-                  {sessionRole === 'admin' && (
-                    <button onClick={() => removeMember(m.id)} style={{ background: 'none', border: 'none', color: '#9b9991', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: '0 2px', marginLeft: 2 }}>×</button>
+
+                  {/* Expanded project access panel */}
+                  {isExpanded && isClient && isAdmin && (
+                    <div style={{ background: '#f5f3f0', borderTop: '0.5px solid rgba(0,0,0,0.06)', padding: '12px 20px 16px 64px' }}>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: '#5a6472', textTransform: 'uppercase' as const, letterSpacing: '0.06em', marginBottom: 10 }}>
+                        Project access for {m.name}
+                      </div>
+
+                      {/* Assigned projects */}
+                      {m.project_assignments.length === 0 ? (
+                        <div style={{ fontSize: 12, color: '#9b9991', fontStyle: 'italic', marginBottom: 10 }}>No projects assigned yet.</div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 6, marginBottom: 12 }}>
+                          {m.project_assignments.map(a => {
+                            const acc = ACCESS_STYLES[a.access_level] || ACCESS_STYLES.view
+                            const saving = savingAccess === m.id + a.project_id
+                            return (
+                              <div key={a.project_id} style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#fff', border: '0.5px solid rgba(0,0,0,0.1)', borderRadius: 8, padding: '8px 12px' }}>
+                                <div style={{ flex: 1, fontSize: 12, fontWeight: 500 }}>{a.project_name}</div>
+                                {/* Access level toggle */}
+                                <button
+                                  onClick={() => toggleAccessLevel(m.id, a.project_id, a.access_level)}
+                                  disabled={!!saving}
+                                  title="Click to toggle view/edit"
+                                  style={{ height: 22, padding: '0 10px', fontSize: 11, background: acc.bg, border: `0.5px solid ${acc.border}`, borderRadius: 4, color: acc.color, cursor: 'pointer', fontWeight: 500, opacity: saving ? 0.6 : 1 }}>
+                                  {saving ? '…' : acc.label}
+                                </button>
+                                <button onClick={() => removeProjectAssignment(m.id, a.project_id)} disabled={!!saving}
+                                  style={{ background: 'none', border: 'none', color: '#ccc', cursor: 'pointer', fontSize: 15, lineHeight: 1, padding: 0 }}
+                                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#F09595' }}
+                                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = '#ccc' }}>
+                                  ×
+                                </button>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+
+                      {/* Assign to new project */}
+                      {unassignedProjects.length > 0 && (
+                        <div>
+                          {assigningProject === m.id ? (
+                            <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 6 }}>
+                              <div style={{ fontSize: 11, color: '#6b6a64', marginBottom: 2 }}>Select a project to assign:</div>
+                              {unassignedProjects.map(p => (
+                                <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#fff', border: '0.5px solid rgba(0,0,0,0.1)', borderRadius: 8, padding: '8px 12px' }}>
+                                  <div style={{ flex: 1, fontSize: 12 }}>{p.name}</div>
+                                  <button onClick={() => assignProject(m.id, p.id, 'view')}
+                                    style={{ height: 24, padding: '0 10px', fontSize: 11, background: ACCESS_STYLES.view.bg, border: `0.5px solid ${ACCESS_STYLES.view.border}`, borderRadius: 5, color: ACCESS_STYLES.view.color, cursor: 'pointer' }}>
+                                    + View
+                                  </button>
+                                  <button onClick={() => assignProject(m.id, p.id, 'edit')}
+                                    style={{ height: 24, padding: '0 10px', fontSize: 11, background: ACCESS_STYLES.edit.bg, border: `0.5px solid ${ACCESS_STYLES.edit.border}`, borderRadius: 5, color: ACCESS_STYLES.edit.color, cursor: 'pointer' }}>
+                                    + Edit
+                                  </button>
+                                </div>
+                              ))}
+                              <button onClick={() => setAssigningProject(null)}
+                                style={{ height: 24, padding: '0 10px', fontSize: 11, background: 'transparent', border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 5, color: '#9b9991', cursor: 'pointer', alignSelf: 'flex-start' as const, marginTop: 2 }}>
+                                Cancel
+                              </button>
+                            </div>
+                          ) : (
+                            <button onClick={() => setAssigningProject(m.id)}
+                              style={{ height: 26, padding: '0 12px', fontSize: 11, background: 'transparent', border: '0.5px solid rgba(24,95,165,0.4)', borderRadius: 6, color: '#185FA5', cursor: 'pointer' }}>
+                              + Assign to project
+                            </button>
+                          )}
+                        </div>
+                      )}
+                      {unassignedProjects.length === 0 && m.project_assignments.length > 0 && (
+                        <div style={{ fontSize: 11, color: '#9b9991', fontStyle: 'italic' }}>All company projects are assigned.</div>
+                      )}
+                    </div>
                   )}
                 </div>
               )

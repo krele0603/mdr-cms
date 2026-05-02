@@ -65,18 +65,11 @@ export async function POST(req: NextRequest) {
   const bcrypt = await import('bcryptjs')
   const password_hash = await bcrypt.hash(password, 12)
 
-  const companyIdVal = company_id && company_id.trim() ? company_id.trim() : null
   const user = await queryOne(
-    companyIdVal
-      ? `INSERT INTO users (email, name, password_hash, role, active, company_id)
-         VALUES ($1, $2, $3, $4, TRUE, $5::uuid)
-         RETURNING id, email, name, role, active, created_at, company_id`
-      : `INSERT INTO users (email, name, password_hash, role, active)
-         VALUES ($1, $2, $3, $4, TRUE)
-         RETURNING id, email, name, role, active, created_at, company_id`,
-    companyIdVal
-      ? [email.toLowerCase().trim(), name.trim(), password_hash, role || 'client', companyIdVal]
-      : [email.toLowerCase().trim(), name.trim(), password_hash, role || 'client']
+    `INSERT INTO users (email, name, password_hash, role, active, company_id)
+     VALUES ($1, $2, $3, $4, TRUE, $5::uuid)
+     RETURNING id, email, name, role, active, created_at, company_id`,
+    [email.toLowerCase().trim(), name.trim(), password_hash, role || 'client', company_id || null]
   )
   return NextResponse.json(user, { status: 201 })
 }
