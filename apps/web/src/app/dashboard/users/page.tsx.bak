@@ -77,8 +77,6 @@ export default function UsersPage() {
     if (!editUser && !form.email.trim()) { setFormError('Email is required'); return }
     if (!editUser && !form.password) { setFormError('Password is required'); return }
     if (!editUser && form.password.length < 8) { setFormError('Password must be at least 8 characters'); return }
-    if (needsCompany && !form.company_id) { setFormError('Company is required for client roles'); return }
-
     setSaving(true)
     try {
       let res
@@ -102,7 +100,6 @@ export default function UsersPage() {
             email: form.email,
             role: form.role,
             password: form.password,
-            company_id: form.company_id || null,
           }),
         })
       }
@@ -293,22 +290,7 @@ export default function UsersPage() {
                   {ROLES.map(r => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
                 </select>
               </div>
-              {needsCompany && (
-                <div style={{ marginBottom: 12 }}>
-                  <label style={labelStyle}>Company *</label>
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    <select value={form.company_id} onChange={e => setForm(f => ({ ...f, company_id: e.target.value }))}
-                      style={{ ...inputStyle, flex: 1 }}>
-                      <option value="">Select company…</option>
-                      {companies.map(c => <option key={c.id} value={c.id}>{c.name}{c.country ? ` (${c.country})` : ''}</option>)}
-                    </select>
-                    <button onClick={() => setShowCompanyModal(true)}
-                      style={{ height: 36, padding: '0 10px', fontSize: 12, background: 'transparent', border: '0.5px solid rgba(0,0,0,0.2)', borderRadius: 8, cursor: 'pointer', whiteSpace: 'nowrap' as const, color: '#5a6472' }}>
-                      + New
-                    </button>
-                  </div>
-                </div>
-              )}
+
               <div>
                 <label style={labelStyle}>{editUser ? 'New password (leave blank to keep current)' : 'Password *'}</label>
                 <input type="password" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))}

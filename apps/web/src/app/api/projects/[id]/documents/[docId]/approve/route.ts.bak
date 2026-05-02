@@ -6,7 +6,7 @@ type Params = { params: { id: string; docId: string } }
 
 export async function POST(req: NextRequest, { params }: Params) {
   const session = await getSession()
-  if (!session || !['admin', 'consultant', 'client-MR'].includes(session.role)) {
+  if (!session || !['admin', 'consultant'].includes(session.role)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 

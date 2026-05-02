@@ -32,9 +32,10 @@ const ACCESS_STYLES: Record<string, { bg: string; color: string; border: string;
 }
 
 interface ProjectAssignment { project_id: string; project_name: string; access_level: string }
-interface Member { id: string; name: string; email: string; role: string; added_at: string; project_assignments: ProjectAssignment[] }
+interface Member { id: string; name: string; email: string; role: string; added_at: string; project_assignments: ProjectAssignment[]; company_role?: string }
 interface Project { id: string; name: string; device_name: string; status: string; updated_at: string; list_name: string; total_docs: number; approved_docs: number }
 interface User { id: string; name: string; email: string; role: string }
+interface DocList { id: string; name: string; doc_count: number }
 
 export default function CompanyPage() {
   const params = useParams()
@@ -53,10 +54,17 @@ export default function CompanyPage() {
   const [expandedMember, setExpandedMember] = useState<string | null>(null)
   const [assigningProject, setAssigningProject] = useState<string | null>(null) // memberId
   const [savingAccess, setSavingAccess] = useState<string | null>(null)
+  // New project modal
+  const [showNewProject, setShowNewProject] = useState(false)
+  const [lists, setLists] = useState<DocList[]>([])
+  const [projectForm, setProjectForm] = useState({ name: '', device_name: '', list_id: '', description: '' })
+  const [projectFormError, setProjectFormError] = useState('')
+  const [savingProject, setSavingProject] = useState(false)
 
   useEffect(() => {
     fetch('/api/auth/session').then(r => r.json()).then(d => setSessionRole(d?.user?.role || ''))
     load()
+    fetch('/api/lists').then(r => r.ok ? r.json() : { lists: [] }).then(d => setLists(d.lists || []))
   }, [id])
 
   useEffect(() => {
@@ -115,6 +123,37 @@ export default function CompanyPage() {
     router.push('/dashboard/companies')
   }
 
+  async function createProject() {
+    setProjectFormError('')
+    if (!projectForm.name.trim()) { setProjectFormError('Project name is required'); return }
+    if (!projectForm.device_name.trim()) { setProjectFormError('Device name is required'); return }
+    if (!projectForm.list_id) { setProjectFormError('Document list is required'); return }
+    setSavingProject(true)
+    try {
+      const res = await fetch('/api/projects', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: projectForm.name,
+          device_name: projectForm.device_name,
+          manufacturer_name: company.name,
+          manufacturer_country: company.country || '',
+          manufacturer_contact: company.contact || '',
+          manufacturer_email: company.email || '',
+          list_id: projectForm.list_id,
+          description: projectForm.description,
+          company_id: id,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setProjectFormError(data.error || 'Failed to create project'); return }
+      setShowNewProject(false)
+      setProjectForm({ name: '', device_name: '', list_id: '', description: '' })
+      load()
+    } catch { setProjectFormError('Connection error') }
+    finally { setSavingProject(false) }
+  }
+
   async function assignProject(memberId: string, projectId: string, accessLevel: string) {
     setSavingAccess(memberId + projectId)
     await fetch(`/api/companies/${id}/members/${memberId}/projects`, {
@@ -124,6 +163,14 @@ export default function CompanyPage() {
     setSavingAccess(null)
     setAssigningProject(null)
     load()
+  }
+
+  async function changeRole(memberId: string, role: string) {
+    setMembers(prev => prev.map(m => m.id === memberId ? { ...m, role } : m))
+    await fetch(`/api/companies/${id}/members`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: memberId, role }),
+    })
   }
 
   async function removeProjectAssignment(memberId: string, projectId: string) {
@@ -202,7 +249,13 @@ export default function CompanyPage() {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
           <div style={{ fontSize: 13, fontWeight: 500, color: '#1a1a18' }}>TFBuilder Projects</div>
           {isAdmin && (
-            <Link href={`/dashboard/projects?company=${id}`} style={{ fontSize: 12, color: '#185FA5', textDecoration: 'none' }}>View all →</Link>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <Link href={`/dashboard/projects?company=${id}`} style={{ fontSize: 12, color: '#185FA5', textDecoration: 'none' }}>View all →</Link>
+              <button onClick={() => { setProjectForm({ name: '', device_name: '', list_id: '', description: '' }); setProjectFormError(''); setShowNewProject(true) }}
+                style={{ height: 28, padding: '0 12px', fontSize: 12, background: '#185FA5', border: 'none', borderRadius: 6, color: '#fff', cursor: 'pointer' }}>
+                + New project
+              </button>
+            </div>
           )}
         </div>
         {projects.length === 0 ? (
@@ -239,13 +292,26 @@ export default function CompanyPage() {
 
       {/* Members & Access Management */}
       <div style={{ background: '#fff', border: '0.5px solid rgba(0,0,0,0.1)', borderRadius: 12, overflow: 'hidden' }}>
-        <div style={{ padding: '12px 20px', borderBottom: '0.5px solid rgba(0,0,0,0.08)', background: '#f8f7f4', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ fontSize: 13, fontWeight: 500 }}>Members & Project Access</div>
-          {isAdmin && (
-            <button onClick={() => setShowAddMember(v => !v)}
-              style={{ height: 28, padding: '0 12px', fontSize: 11, background: '#4e8c8c', border: 'none', borderRadius: 6, color: '#fff', cursor: 'pointer' }}>
-              + Add member
-            </button>
+        <div style={{ borderBottom: '0.5px solid rgba(0,0,0,0.08)', background: '#f8f7f4' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 20px' }}>
+            <div style={{ fontSize: 13, fontWeight: 500 }}>Members & Project Access</div>
+            {isAdmin && (
+              <button onClick={() => setShowAddMember(v => !v)}
+                style={{ height: 28, padding: '0 12px', fontSize: 11, background: '#4e8c8c', border: 'none', borderRadius: 6, color: '#fff', cursor: 'pointer' }}>
+                + Add member
+              </button>
+            )}
+          </div>
+          {/* Column headers */}
+          {members.length > 0 && isAdmin && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px 180px 32px', padding: '4px 20px 8px', gap: 0 }}>
+              <div style={{ fontSize: 10, fontWeight: 600, color: '#9b9991', textTransform: 'uppercase' as const, letterSpacing: '0.06em' }}>Member</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', fontSize: 10, fontWeight: 600, color: '#9b9991', textTransform: 'uppercase' as const, letterSpacing: '0.06em', textAlign: 'center' as const }}>
+                <span>Consultant</span><span>Client</span><span>MR</span>
+              </div>
+              <div style={{ fontSize: 10, fontWeight: 600, color: '#9b9991', textTransform: 'uppercase' as const, letterSpacing: '0.06em', textAlign: 'center' as const }}>Projects</div>
+              <div />
+            </div>
           )}
         </div>
 
@@ -297,38 +363,42 @@ export default function CompanyPage() {
                 <div key={m.id} style={{ borderBottom: mi < members.length - 1 ? '0.5px solid rgba(0,0,0,0.06)' : 'none' }}>
                   {/* Member row */}
                   <div style={{ padding: '12px 20px', display: 'flex', alignItems: 'center', gap: 12, background: isExpanded ? '#fafaf8' : '#fff' }}>
-                    <div style={{ width: 32, height: 32, borderRadius: '50%', background: rs.bg, color: rs.color, border: `0.5px solid ${rs.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 600, flexShrink: 0 }}>
-                      {m.name.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2)}
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <span style={{ fontSize: 13, fontWeight: 500 }}>{m.name}</span>
-                        <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 3, background: rs.bg, color: rs.color, border: `0.5px solid ${rs.border}` }}>{m.role}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                      <div style={{ width: 32, height: 32, borderRadius: '50%', background: rs.bg, color: rs.color, border: `0.5px solid ${rs.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 600, flexShrink: 0 }}>
+                        {m.name.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2)}
                       </div>
-                      <div style={{ fontSize: 11, color: '#9b9991', marginTop: 1 }}>{m.email}</div>
-                    </div>
-                    {/* Project assignment summary */}
-                    {isClient && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-                        <span style={{ fontSize: 11, color: '#6b6a64' }}>
-                          {m.project_assignments.length === 0 ? 'No projects' : `${m.project_assignments.length} project${m.project_assignments.length !== 1 ? 's' : ''}`}
-                        </span>
-                        {isAdmin && (
-                          <button onClick={() => setExpandedMember(isExpanded ? null : m.id)}
-                            style={{ height: 24, padding: '0 10px', fontSize: 11, background: isExpanded ? '#185FA5' : 'transparent', border: `0.5px solid ${isExpanded ? '#185FA5' : 'rgba(0,0,0,0.2)'}`, borderRadius: 5, color: isExpanded ? '#fff' : '#5a6472', cursor: 'pointer' }}>
-                            {isExpanded ? 'Close' : 'Manage access'}
-                          </button>
-                        )}
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>{m.name}</div>
+                        <div style={{ fontSize: 11, color: '#9b9991', marginTop: 1 }}>{m.email}</div>
                       </div>
-                    )}
-                    {isAdmin && (
-                      <button onClick={() => removeMember(m.id)}
-                        style={{ background: 'none', border: 'none', color: '#ccc', cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: '0 2px', flexShrink: 0 }}
-                        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#F09595' }}
-                        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = '#ccc' }}>
-                        ×
-                      </button>
-                    )}
+                    </div>
+                    {/* Role column */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', alignItems: 'center' }}>
+                      {(['consultant', 'client', 'client-MR'] as const).map(r => (
+                        <label key={r} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, cursor: 'pointer', fontSize: 12, color: m.role === r ? '#185FA5' : '#9b9991', fontWeight: m.role === r ? 600 : 400 }}>
+                          <input type='radio' name={`role-${m.id}`} value={r} checked={m.role === r} onChange={() => changeRole(m.id, r)} style={{ accentColor: '#185FA5', cursor: 'pointer', width: 14, height: 14 }} />
+                        </label>
+                      ))}
+                    </div>
+                    {/* Projects column */}
+                    <div style={{ display: 'flex', justifyContent: 'center' }}>
+                      {(m.role === 'client' || m.role === 'client-MR') && (
+                        <button onClick={() => setExpandedMember(isExpanded ? null : m.id)}
+                          style={{ height: 24, padding: '0 10px', fontSize: 11, background: isExpanded ? '#185FA5' : 'transparent', border: `0.5px solid ${isExpanded ? '#185FA5' : 'rgba(0,0,0,0.2)'}`, borderRadius: 5, color: isExpanded ? '#fff' : '#5a6472', cursor: 'pointer', whiteSpace: 'nowrap' as const }}>
+                          {isExpanded ? 'Close' : 'Projects'}
+                        </button>
+                      )}
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'center' }}>
+                      {isAdmin && (
+                        <button onClick={() => removeMember(m.id)}
+                          style={{ background: 'none', border: 'none', color: '#ccc', cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: 0 }}
+                          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#F09595' }}
+                          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = '#ccc' }}>
+                          ×
+                        </button>
+                      )}
+                    </div>
                   </div>
 
                   {/* Expanded project access panel */}
@@ -412,6 +482,61 @@ export default function CompanyPage() {
           </div>
         )}
       </div>
+      {/* New project modal */}
+      {showNewProject && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 20 }}
+          onClick={() => setShowNewProject(false)}>
+          <div style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 460, border: '0.5px solid rgba(0,0,0,0.12)', overflow: 'hidden', boxShadow: '0 8px 32px rgba(0,0,0,0.14)' }}
+            onClick={e => e.stopPropagation()}>
+            <div style={{ padding: '14px 20px', borderBottom: '0.5px solid rgba(0,0,0,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 500 }}>New project</div>
+                <div style={{ fontSize: 11, color: '#9b9991', marginTop: 2 }}>Company: {company.name}</div>
+              </div>
+              <button onClick={() => setShowNewProject(false)} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#6b6a64' }}>×</button>
+            </div>
+            <div style={{ padding: 20, display: 'flex', flexDirection: 'column' as const, gap: 12 }}>
+              {projectFormError && (
+                <div style={{ background: '#FCEBEB', border: '0.5px solid #F09595', borderRadius: 8, padding: '8px 12px', fontSize: 12, color: '#A32D2D' }}>{projectFormError}</div>
+              )}
+              <div>
+                <label style={{ display: 'block', fontSize: 12, color: '#6b6a64', marginBottom: 4 }}>Device name *</label>
+                <input value={projectForm.device_name} onChange={e => setProjectForm(f => ({ ...f, device_name: e.target.value }))} placeholder="e.g. CardioMonitor Pro" autoFocus
+                  style={{ width: '100%', padding: '7px 10px', fontSize: 13, border: '0.5px solid rgba(0,0,0,0.2)', borderRadius: 8, outline: 'none', boxSizing: 'border-box' as const }} />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 12, color: '#6b6a64', marginBottom: 4 }}>Project name *</label>
+                <input value={projectForm.name} onChange={e => setProjectForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. CardioMonitor MDR TF"
+                  style={{ width: '100%', padding: '7px 10px', fontSize: 13, border: '0.5px solid rgba(0,0,0,0.2)', borderRadius: 8, outline: 'none', boxSizing: 'border-box' as const }} />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 12, color: '#6b6a64', marginBottom: 4 }}>Document list *</label>
+                <select value={projectForm.list_id} onChange={e => setProjectForm(f => ({ ...f, list_id: e.target.value }))}
+                  style={{ width: '100%', padding: '7px 10px', fontSize: 13, border: '0.5px solid rgba(0,0,0,0.2)', borderRadius: 8, outline: 'none', background: '#fff', boxSizing: 'border-box' as const }}>
+                  <option value="">Select a list…</option>
+                  {lists.map(l => <option key={l.id} value={l.id}>{l.name} ({l.doc_count} docs)</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 12, color: '#6b6a64', marginBottom: 4 }}>Description</label>
+                <input value={projectForm.description} onChange={e => setProjectForm(f => ({ ...f, description: e.target.value }))} placeholder="Brief scope or notes"
+                  style={{ width: '100%', padding: '7px 10px', fontSize: 13, border: '0.5px solid rgba(0,0,0,0.2)', borderRadius: 8, outline: 'none', boxSizing: 'border-box' as const }} />
+              </div>
+              <div style={{ padding: '10px 12px', background: '#f8f7f4', borderRadius: 8, fontSize: 12, color: '#6b6a64' }}>
+                <div style={{ fontWeight: 500, marginBottom: 2 }}>Manufacturer (from company)</div>
+                <div>{company.name}{company.country ? ` · ${company.country}` : ''}{company.contact ? ` · ${company.contact}` : ''}</div>
+              </div>
+            </div>
+            <div style={{ padding: '12px 20px', borderTop: '0.5px solid rgba(0,0,0,0.08)', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button onClick={() => setShowNewProject(false)} style={{ height: 32, padding: '0 14px', fontSize: 13, background: 'transparent', border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 8, cursor: 'pointer', color: '#5a6472' }}>Cancel</button>
+              <button onClick={createProject} disabled={savingProject}
+                style={{ height: 32, padding: '0 14px', fontSize: 13, background: savingProject ? '#B5D4F4' : '#185FA5', border: 'none', borderRadius: 8, color: '#fff', cursor: savingProject ? 'not-allowed' : 'pointer' }}>
+                {savingProject ? 'Creating…' : 'Create project'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

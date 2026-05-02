@@ -31,7 +31,7 @@ export default function UsersPage() {
   const [showCompanyModal, setShowCompanyModal] = useState(false)
   const [editUser, setEditUser] = useState<User | null>(null)
   const [filterRole, setFilterRole] = useState('')
-  const [form, setForm] = useState({ name: '', email: '', role: 'consultant' as UserRole, password: '', company_id: '' })
+  const [form, setForm] = useState({ name: '', email: '', role: 'client' as UserRole, password: '', company_id: '' })
   const [companyForm, setCompanyForm] = useState({ name: '', country: '', contact: '', email: '' })
   const [formError, setFormError] = useState('')
   const [companyError, setCompanyError] = useState('')
@@ -283,13 +283,12 @@ export default function UsersPage() {
                   <input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="jana@example.com" style={inputStyle} />
                 </div>
               )}
-              <div style={{ marginBottom: 12 }}>
-                <label style={labelStyle}>Role *</label>
-                <select value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value as UserRole }))}
-                  style={{ ...inputStyle, background: '#fff' }}>
-                  {ROLES.map(r => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
-                </select>
-              </div>
+              {editUser && (
+                <div style={{ marginBottom: 12 }}>
+                  <label style={labelStyle}>Role</label>
+                  <div style={{ padding: '8px 10px', fontSize: 12, background: '#f5f2ee', borderRadius: 8, color: '#5a6472' }}>Role is assigned per company in the Companies section.</div>
+                </div>
+              )}
 
               <div>
                 <label style={labelStyle}>{editUser ? 'New password (leave blank to keep current)' : 'Password *'}</label>

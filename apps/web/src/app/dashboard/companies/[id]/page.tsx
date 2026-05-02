@@ -32,7 +32,7 @@ const ACCESS_STYLES: Record<string, { bg: string; color: string; border: string;
 }
 
 interface ProjectAssignment { project_id: string; project_name: string; access_level: string }
-interface Member { id: string; name: string; email: string; role: string; added_at: string; project_assignments: ProjectAssignment[] }
+interface Member { id: string; name: string; email: string; role: string; added_at: string; project_assignments: ProjectAssignment[]; company_role?: string }
 interface Project { id: string; name: string; device_name: string; status: string; updated_at: string; list_name: string; total_docs: number; approved_docs: number }
 interface User { id: string; name: string; email: string; role: string }
 interface DocList { id: string; name: string; doc_count: number }
@@ -165,6 +165,14 @@ export default function CompanyPage() {
     load()
   }
 
+  async function changeRole(memberId: string, role: string) {
+    setMembers(prev => prev.map(m => m.id === memberId ? { ...m, role } : m))
+    await fetch(`/api/companies/${id}/members`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: memberId, role }),
+    })
+  }
+
   async function removeProjectAssignment(memberId: string, projectId: string) {
     setSavingAccess(memberId + projectId)
     await fetch(`/api/companies/${id}/members/${memberId}/projects?project_id=${projectId}`, { method: 'DELETE' })
@@ -284,13 +292,26 @@ export default function CompanyPage() {
 
       {/* Members & Access Management */}
       <div style={{ background: '#fff', border: '0.5px solid rgba(0,0,0,0.1)', borderRadius: 12, overflow: 'hidden' }}>
-        <div style={{ padding: '12px 20px', borderBottom: '0.5px solid rgba(0,0,0,0.08)', background: '#f8f7f4', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ fontSize: 13, fontWeight: 500 }}>Members & Project Access</div>
-          {isAdmin && (
-            <button onClick={() => setShowAddMember(v => !v)}
-              style={{ height: 28, padding: '0 12px', fontSize: 11, background: '#4e8c8c', border: 'none', borderRadius: 6, color: '#fff', cursor: 'pointer' }}>
-              + Add member
-            </button>
+        <div style={{ borderBottom: '0.5px solid rgba(0,0,0,0.08)', background: '#f8f7f4' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 20px' }}>
+            <div style={{ fontSize: 13, fontWeight: 500 }}>Members & Project Access</div>
+            {isAdmin && (
+              <button onClick={() => setShowAddMember(v => !v)}
+                style={{ height: 28, padding: '0 12px', fontSize: 11, background: '#4e8c8c', border: 'none', borderRadius: 6, color: '#fff', cursor: 'pointer' }}>
+                + Add member
+              </button>
+            )}
+          </div>
+          {/* Column headers */}
+          {members.length > 0 && isAdmin && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 100px 100px 100px 120px 32px', padding: '4px 20px 8px', gap: 0 }}>
+              <div style={{ fontSize: 10, fontWeight: 600, color: '#9b9991', textTransform: 'uppercase' as const, letterSpacing: '0.06em' }}>Member</div>
+              <div style={{ fontSize: 10, fontWeight: 600, color: '#9b9991', textTransform: 'uppercase' as const, letterSpacing: '0.06em', textAlign: 'center' as const }}>Consultant</div>
+              <div style={{ fontSize: 10, fontWeight: 600, color: '#9b9991', textTransform: 'uppercase' as const, letterSpacing: '0.06em', textAlign: 'center' as const }}>Client</div>
+              <div style={{ fontSize: 10, fontWeight: 600, color: '#9b9991', textTransform: 'uppercase' as const, letterSpacing: '0.06em', textAlign: 'center' as const }}>MR</div>
+              <div style={{ fontSize: 10, fontWeight: 600, color: '#9b9991', textTransform: 'uppercase' as const, letterSpacing: '0.06em', textAlign: 'center' as const }}>Projects</div>
+              <div />
+            </div>
           )}
         </div>
 
@@ -341,39 +362,47 @@ export default function CompanyPage() {
               return (
                 <div key={m.id} style={{ borderBottom: mi < members.length - 1 ? '0.5px solid rgba(0,0,0,0.06)' : 'none' }}>
                   {/* Member row */}
-                  <div style={{ padding: '12px 20px', display: 'flex', alignItems: 'center', gap: 12, background: isExpanded ? '#fafaf8' : '#fff' }}>
-                    <div style={{ width: 32, height: 32, borderRadius: '50%', background: rs.bg, color: rs.color, border: `0.5px solid ${rs.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 600, flexShrink: 0 }}>
-                      {m.name.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2)}
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <span style={{ fontSize: 13, fontWeight: 500 }}>{m.name}</span>
-                        <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 3, background: rs.bg, color: rs.color, border: `0.5px solid ${rs.border}` }}>{m.role}</span>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 100px 100px 100px 120px 32px', alignItems: 'center', gap: 0, padding: '10px 20px', background: isExpanded ? '#fafaf8' : '#fff' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                      <div style={{ width: 32, height: 32, borderRadius: '50%', background: rs.bg, color: rs.color, border: `0.5px solid ${rs.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 600, flexShrink: 0 }}>
+                        {m.name.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2)}
                       </div>
-                      <div style={{ fontSize: 11, color: '#9b9991', marginTop: 1 }}>{m.email}</div>
-                    </div>
-                    {/* Project assignment summary */}
-                    {isClient && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-                        <span style={{ fontSize: 11, color: '#6b6a64' }}>
-                          {m.project_assignments.length === 0 ? 'No projects' : `${m.project_assignments.length} project${m.project_assignments.length !== 1 ? 's' : ''}`}
-                        </span>
-                        {isAdmin && (
-                          <button onClick={() => setExpandedMember(isExpanded ? null : m.id)}
-                            style={{ height: 24, padding: '0 10px', fontSize: 11, background: isExpanded ? '#185FA5' : 'transparent', border: `0.5px solid ${isExpanded ? '#185FA5' : 'rgba(0,0,0,0.2)'}`, borderRadius: 5, color: isExpanded ? '#fff' : '#5a6472', cursor: 'pointer' }}>
-                            {isExpanded ? 'Close' : 'Manage access'}
-                          </button>
-                        )}
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>{m.name}</div>
+                        <div style={{ fontSize: 11, color: '#9b9991', marginTop: 1 }}>{m.email}</div>
                       </div>
-                    )}
-                    {isAdmin && (
-                      <button onClick={() => removeMember(m.id)}
-                        style={{ background: 'none', border: 'none', color: '#ccc', cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: '0 2px', flexShrink: 0 }}
-                        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#F09595' }}
-                        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = '#ccc' }}>
-                        ×
-                      </button>
-                    )}
+                    </div>
+                    {/* Consultant */}
+                    <div style={{ display: 'flex', justifyContent: 'center' }}>
+                      <input type='radio' name={`role-${m.id}`} value='consultant' checked={m.role === 'consultant'} onChange={() => changeRole(m.id, 'consultant')} style={{ accentColor: '#185FA5', cursor: 'pointer', width: 16, height: 16 }} />
+                    </div>
+                    {/* Client */}
+                    <div style={{ display: 'flex', justifyContent: 'center' }}>
+                      <input type='radio' name={`role-${m.id}`} value='client' checked={m.role === 'client'} onChange={() => changeRole(m.id, 'client')} style={{ accentColor: '#185FA5', cursor: 'pointer', width: 16, height: 16 }} />
+                    </div>
+                    {/* MR */}
+                    <div style={{ display: 'flex', justifyContent: 'center' }}>
+                      <input type='radio' name={`role-${m.id}`} value='client-MR' checked={m.role === 'client-MR'} onChange={() => changeRole(m.id, 'client-MR')} style={{ accentColor: '#185FA5', cursor: 'pointer', width: 16, height: 16 }} />
+                    </div>
+                    {/* Projects */}
+                    <div style={{ display: 'flex', justifyContent: 'center' }}>
+                      {(m.role === 'client' || m.role === 'client-MR') && (
+                        <button onClick={() => setExpandedMember(isExpanded ? null : m.id)}
+                          style={{ height: 24, padding: '0 10px', fontSize: 11, background: isExpanded ? '#185FA5' : 'transparent', border: `0.5px solid ${isExpanded ? '#185FA5' : 'rgba(0,0,0,0.2)'}`, borderRadius: 5, color: isExpanded ? '#fff' : '#5a6472', cursor: 'pointer', whiteSpace: 'nowrap' as const }}>
+                          {isExpanded ? 'Close' : 'Projects'}
+                        </button>
+                      )}
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'center' }}>
+                      {isAdmin && (
+                        <button onClick={() => removeMember(m.id)}
+                          style={{ background: 'none', border: 'none', color: '#ccc', cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: 0 }}
+                          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#F09595' }}
+                          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = '#ccc' }}>
+                          ×
+                        </button>
+                      )}
+                    </div>
                   </div>
 
                   {/* Expanded project access panel */}

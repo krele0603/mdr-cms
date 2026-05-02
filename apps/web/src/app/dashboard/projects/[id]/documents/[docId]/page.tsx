@@ -1314,7 +1314,7 @@ export default function DocumentEditorPage() {
   // Set editor read-only for approved docs viewed by client
   useEffect(() => {
     if (!editor) return
-    const shouldBeReadOnly = userRole === 'client' && docStatus === 'approved'
+    const shouldBeReadOnly = (userRole === 'client') && docStatus === 'approved'
     editor.setEditable(!shouldBeReadOnly)
   }, [editor, userRole, docStatus])
 
@@ -1375,6 +1375,7 @@ export default function DocumentEditorPage() {
   const isReview = docStatus === 'review'
   const isAdmin = userRole === 'admin'
   const isConsultant = userRole === 'consultant'
+  const isClientMR = userRole === 'client-MR'
   const backHref = isClient ? `/dashboard/client/projects/${projectId}` : `/dashboard/projects/${projectId}`
   const openComments = comments.filter(c => !c.resolved && !c.parent_id).length
 
@@ -1426,7 +1427,7 @@ export default function DocumentEditorPage() {
           )}
           {isClient && isReview && <span style={{ fontSize: 12, color: '#8a6020', fontWeight: 500 }}>⏳ Awaiting review</span>}
           {isClient && isApproved && <span style={{ fontSize: 12, color: '#3a7a5a', fontWeight: 500 }}>✓ Approved</span>}
-          {(isAdmin || isConsultant) && isReview && (
+          {(isAdmin || isConsultant || isClientMR) && isReview && (
             <>
               <button onClick={approveDoc} disabled={approvingDoc} style={{ height: 28, padding: '0 12px', fontSize: 12, cursor: 'pointer', background: '#3a7a5a', border: 'none', borderRadius: 6, color: '#fff', fontWeight: 500, opacity: approvingDoc ? 0.7 : 1 }}>{approvingDoc ? 'Approving…' : '✓ Approve'}</button>
               <button onClick={() => setShowRequestChanges(v => !v)} style={{ height: 28, padding: '0 12px', fontSize: 12, cursor: 'pointer', background: showRequestChanges ? 'rgba(148,48,48,0.1)' : 'transparent', border: '0.5px solid rgba(148,48,48,0.35)', borderRadius: 6, color: '#943030', fontWeight: 500 }}>Request changes</button>
