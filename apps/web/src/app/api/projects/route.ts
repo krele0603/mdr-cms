@@ -35,7 +35,7 @@ export async function GET(req: NextRequest) {
              COUNT(DISTINCT pd.id) AS total_docs,
              COUNT(DISTINCT CASE WHEN pd.status = 'approved' THEN pd.id END) AS approved_docs
       FROM projects p
-      JOIN project_members pm ON pm.project_id = p.id AND pm.user_id = $1::uuid
+      JOIN company_members cm ON cm.company_id = p.company_id AND cm.user_id = $1::uuid
       LEFT JOIN users u ON u.id = p.created_by
       LEFT JOIN document_lists dl ON dl.id = p.list_id
       LEFT JOIN companies c ON c.id = p.company_id
