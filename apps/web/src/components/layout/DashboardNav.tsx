@@ -86,7 +86,7 @@ export default function DashboardNav({ user }: Props) {
   useEffect(() => {
     loadNotifications()
     loadConversations()
-    if (user.role === 'client' || user.role === 'client-MR') {
+    if (user.role === 'client' || user.role === 'client-MR' || user.role === 'consultant') {
       Promise.all([
         fetch('/api/companies').then(r => r.ok ? r.json() : []),
         fetch('/api/projects').then(r => r.ok ? r.json() : { projects: [] }),
@@ -94,7 +94,13 @@ export default function DashboardNav({ user }: Props) {
         const companies = Array.isArray(comps) ? comps : []
         setClientCompanies(companies)
         setClientProjects(projs.projects || [])
-        if (companies.length > 0) setSelectedCompanyId(companies[0].id)
+        if (companies.length > 0) {
+          const saved = localStorage.getItem('selectedCompanyId')
+          const validSaved = saved && companies.some((c) => c.id === saved)
+          const id = validSaved ? saved : companies[0].id
+          setSelectedCompanyId(id)
+          if (!validSaved) localStorage.setItem('selectedCompanyId', id)
+        }
       })
     }
     const interval = setInterval(() => { loadNotifications(); loadConversations() }, 30000)
@@ -364,8 +370,14 @@ export default function DashboardNav({ user }: Props) {
 
       <aside style={{ width: 220, background: '#1a1f24', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
         {/* Logo */}
-        <div style={{ padding: '20px 20px 16px', borderBottom: '0.5px solid rgba(255,255,255,0.08)' }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: '#4e8c8c', letterSpacing: '0.05em', }}>EasyQMS</div>
+        <div style={{ padding: '16px 20px', borderBottom: '0.5px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: '#4e8c8c', letterSpacing: '0.05em' }}>EasyQMS</div>
+          <Link href='/dashboard' title='Home'
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 7, background: pathname === '/dashboard' ? 'rgba(78,140,140,0.2)' : 'rgba(255,255,255,0.05)', color: pathname === '/dashboard' ? '#4e8c8c' : 'rgba(255,255,255,0.4)', textDecoration: 'none', transition: 'background 0.15s' }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(78,140,140,0.2)'; (e.currentTarget as HTMLElement).style.color = '#4e8c8c' }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = pathname === '/dashboard' ? 'rgba(78,140,140,0.2)' : 'rgba(255,255,255,0.05)'; (e.currentTarget as HTMLElement).style.color = pathname === '/dashboard' ? '#4e8c8c' : 'rgba(255,255,255,0.4)' }}>
+            <svg width='15' height='15' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='1.75' strokeLinecap='round' strokeLinejoin='round'><path d='M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z'/><polyline points='9 22 9 12 15 12 15 22'/></svg>
+          </Link>
         </div>
 
         {/* Nav */}
@@ -387,7 +399,7 @@ export default function DashboardNav({ user }: Props) {
                       </div>
                       <div id="company-dd" style={{ display: 'none', position: 'absolute' as const, top: '100%', left: 0, right: 0, marginTop: 2, background: '#2c3138', border: '0.5px solid rgba(255,255,255,0.12)', borderRadius: 6, overflow: 'hidden', zIndex: 200 }}>
                         {clientCompanies.map(c => (
-                          <div key={c.id} onClick={() => { setSelectedCompanyId(c.id); const el = document.getElementById('company-dd'); if (el) el.style.display = 'none' }}
+                          <div key={c.id} onClick={() => { setSelectedCompanyId(c.id); localStorage.setItem('selectedCompanyId', c.id); const el = document.getElementById('company-dd'); if (el) el.style.display = 'none' }}
                             style={{ padding: '8px 10px', fontSize: 12, cursor: 'pointer', color: c.id === selectedCompanyId ? '#4e8c8c' : 'rgba(255,255,255,0.65)', background: c.id === selectedCompanyId ? 'rgba(78,140,140,0.15)' : 'transparent', fontWeight: c.id === selectedCompanyId ? 500 : 400 }}
                             onMouseEnter={e => { if (c.id !== selectedCompanyId) (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.05)' }}
                             onMouseLeave={e => { if (c.id !== selectedCompanyId) (e.currentTarget as HTMLElement).style.background = 'transparent' }}>
