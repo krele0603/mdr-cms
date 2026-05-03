@@ -493,6 +493,7 @@ export default function EqmsDocumentEditor() {
   const [showChangeNote, setShowChangeNote] = useState(false)
   const [changeNote, setChangeNote] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [revising, setRevising] = useState(false)
   const [editorReady, setEditorReady] = useState(false)
   const [sizes, setSizes] = useState(DEFAULT_SIZES)
   const [zoom, setZoom] = useState(100)
@@ -578,6 +579,15 @@ export default function EqmsDocumentEditor() {
     setSubmitting(false)
   }
 
+  async function createRevision() {
+    if (!confirm('Create a new revision? The approved version will be preserved in history.')) return
+    setRevising(true)
+    const res = await fetch(`/api/eqms/documents/${docId}/revise`, { method: 'POST' })
+    if (res.ok) { loadDoc() }
+    else { const d = await res.json(); alert(d.error || 'Failed to create revision') }
+    setRevising(false)
+  }
+
   function insertImage() {
     if (!editor) return
     const input = document.createElement('input')
@@ -603,7 +613,7 @@ export default function EqmsDocumentEditor() {
   const status = doc ? (DOC_STATUS[doc.status] || DOC_STATUS.draft) : null
   const versionLabel = doc ? `v${doc.version_major}.${doc.version_minor}` : ''
   const isApproved = doc?.version_status === 'active'
-  const canApprove = sessionRole === 'client-MR' || sessionRole === 'admin'
+  const canApprove = sessionRole === 'client-MR' || sessionRole === 'admin' || sessionRole === 'consultant'
   const hasPendingApproval = doc?.version_status === 'pending'
 
   if (loading) return <div style={{ padding: 40, textAlign: 'center', color: '#9b9991', fontSize: 13 }}>Loading…</div>
@@ -647,6 +657,12 @@ export default function EqmsDocumentEditor() {
             <button onClick={approve} disabled={submitting}
               style={{ height: 28, padding: '0 10px', fontSize: 12, background: '#EAF3DE', border: '0.5px solid #97C459', borderRadius: 6, cursor: 'pointer', color: '#27500A', fontWeight: 500 }}>
               ✓ Approve
+            </button>
+          )}
+          {isApproved && canApprove && (
+            <button onClick={createRevision} disabled={revising}
+              style={{ height: 28, padding: '0 10px', fontSize: 12, background: 'transparent', border: '0.5px solid rgba(0,0,0,0.2)', borderRadius: 6, cursor: 'pointer', color: '#5a6472', opacity: revising ? 0.6 : 1 }}>
+              {revising ? 'Creating…' : '↻ New revision'}
             </button>
           )}
         </div>

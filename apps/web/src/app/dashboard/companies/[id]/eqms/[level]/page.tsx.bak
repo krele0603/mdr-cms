@@ -316,71 +316,55 @@ export default function CompanyEqmsLevelPage() {
             const isPending = doc.version_status === 'pending'
             const versionLabel = `v${doc.version_major}.${doc.version_minor}`
             const av = doc._active_version
-            // Active info: either this row IS active, or companion from _active_version
-            const activeVer = isActive ? { id: doc.id, maj: doc.version_major, min: doc.version_minor } : av ? { id: doc.id, maj: av.version_major, min: av.version_minor } : null
-            const hasDraft = isDraft || isPending
             return (
-              <div key={doc.current_version_id} style={{ borderBottom: i < documents.length - 1 ? '0.5px solid rgba(0,0,0,0.06)' : 'none' }}>
-                {/* Column headers - only on first row */}
-                {i === 0 && (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', padding: '6px 16px 4px', gap: 0, borderBottom: '0.5px solid rgba(0,0,0,0.05)' }}>
-                    <div style={{ fontSize: 10, fontWeight: 600, color: '#9b9991', textTransform: 'uppercase' as const, letterSpacing: '0.06em' }}>Active</div>
-                    <div style={{ fontSize: 10, fontWeight: 600, color: '#9b9991', textTransform: 'uppercase' as const, letterSpacing: '0.06em', paddingLeft: 12, borderLeft: '0.5px solid rgba(0,0,0,0.06)' }}>Draft / Pending</div>
+              <div key={doc.current_version_id} style={{ padding: '10px 16px', borderBottom: i < documents.length - 1 ? '0.5px solid rgba(0,0,0,0.06)' : 'none', display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 4 }}>
+                    <div style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: isActive ? '#3B6D11' : isPending ? '#c8a96e' : '#9b9991' }} />
+                    <div style={{ fontSize: 13, fontWeight: 500 }}>{doc.title}</div>
                   </div>
-                )}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', minHeight: 56 }}>
-                  {/* LEFT: Active column */}
-                  <div style={{ padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 10, borderRight: '0.5px solid rgba(0,0,0,0.06)' }}>
-                    {activeVer ? (
-                      <>
-                        <div style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: '#3B6D11' }} />
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 2 }}>{doc.title}</div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                            {doc.code && <span style={{ fontSize: 11, color: '#9b9991', fontFamily: 'monospace' }}>{doc.code}</span>}
-                            <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 3, background: '#EAF3DE', color: '#27500A', border: '0.5px solid #97C459' }}>Active v{activeVer.maj}.{activeVer.min}</span>
-                            <span style={{ fontSize: 10, color: '#9b9991' }}>· {doc.created_by_name}</span>
-                          </div>
-                        </div>
-                        <Link href={`/dashboard/companies/${companyId}/documents/${doc.id}`}
-                          style={{ height: 28, padding: '0 12px', fontSize: 12, background: '#EAF3DE', border: '0.5px solid #97C459', borderRadius: 6, color: '#27500A', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', flexShrink: 0 }}>
-                          View
-                        </Link>
-                      </>
-                    ) : (
-                      <div style={{ fontSize: 12, color: '#ccc', fontStyle: 'italic' }}>—</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingLeft: 15 }}>
+                    {doc.code && <span style={{ fontSize: 11, color: '#9b9991', fontFamily: 'monospace' }}>{doc.code}</span>}
+                    {/* Active version badge */}
+                    {av && (
+                      <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 3, background: '#EAF3DE', color: '#27500A', border: '0.5px solid #97C459' }}>Active v{av.version_major}.{av.version_minor}</span>
                     )}
-                  </div>
-                  {/* RIGHT: Draft/Pending column */}
-                  <div style={{ padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 10 }}>
-                    {hasDraft ? (
-                      <>
-                        <div style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: isPending ? '#c8a96e' : '#9b9991' }} />
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          {!activeVer && <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 2 }}>{doc.title}</div>}
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                            {!activeVer && doc.code && <span style={{ fontSize: 11, color: '#9b9991', fontFamily: 'monospace' }}>{doc.code}</span>}
-                            <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 3, background: isPending ? '#FFFBCC' : '#F1EFE8', color: isPending ? '#7A6500' : '#5F5E5A', border: `0.5px solid ${isPending ? '#F5E24A' : '#D3D1C7'}` }}>{isPending ? 'Pending' : 'Draft'} {versionLabel}</span>
-                            {!activeVer && <span style={{ fontSize: 10, color: '#9b9991' }}>· {doc.created_by_name}</span>}
-                          </div>
-                        </div>
-                        <div style={{ display: 'flex', gap: 5, flexShrink: 0 }}>
-                          <Link href={`/dashboard/companies/${companyId}/documents/${doc.id}`}
-                            style={{ height: 28, padding: '0 12px', fontSize: 12, background: '#E6F1FB', border: '0.5px solid #85B7EB', borderRadius: 6, color: '#185FA5', textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>
-                            Open
-                          </Link>
-                          {canEdit && (
-                            <button onClick={() => deleteDocument(doc.id, doc.title)}
-                              style={{ height: 28, padding: '0 8px', fontSize: 12, background: '#FCEBEB', border: '0.5px solid #F09595', borderRadius: 6, color: '#A32D2D', cursor: 'pointer' }}>
-                              Delete
-                            </button>
-                          )}
-                        </div>
-                      </>
-                    ) : (
-                      <div style={{ fontSize: 12, color: '#ccc', fontStyle: 'italic' }}>—</div>
+                    {!av && isActive && (
+                      <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 3, background: '#EAF3DE', color: '#27500A', border: '0.5px solid #97C459' }}>Active {versionLabel}</span>
                     )}
+                    {/* Draft badge */}
+                    {(isDraft || isPending) && (
+                      <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 3, background: isPending ? '#FFFBCC' : '#F1EFE8', color: isPending ? '#7A6500' : '#5F5E5A', border: `0.5px solid ${isPending ? '#F5E24A' : '#D3D1C7'}` }}>{isPending ? 'Pending' : 'Draft'} {versionLabel}</span>
+                    )}
+                    <span style={{ fontSize: 10, color: '#9b9991' }}>· {doc.created_by_name}</span>
                   </div>
+                </div>
+                {/* Buttons: active View | draft Open + Delete */}
+                <div style={{ display: 'flex', gap: 6, flexShrink: 0, alignItems: 'center' }}>
+                  {av && (
+                    <Link href={`/dashboard/companies/${companyId}/documents/${doc.id}?version=${av.id}`}
+                      style={{ height: 28, padding: '0 12px', fontSize: 12, background: '#EAF3DE', border: '0.5px solid #97C459', borderRadius: 6, color: '#27500A', textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>
+                      View
+                    </Link>
+                  )}
+                  {!isActive && (
+                    <Link href={`/dashboard/companies/${companyId}/documents/${doc.id}`}
+                      style={{ height: 28, padding: '0 12px', fontSize: 12, background: '#E6F1FB', border: '0.5px solid #85B7EB', borderRadius: 6, color: '#185FA5', textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>
+                      Open
+                    </Link>
+                  )}
+                  {isActive && !av && (
+                    <Link href={`/dashboard/companies/${companyId}/documents/${doc.id}`}
+                      style={{ height: 28, padding: '0 12px', fontSize: 12, background: '#EAF3DE', border: '0.5px solid #97C459', borderRadius: 6, color: '#27500A', textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>
+                      View
+                    </Link>
+                  )}
+                  {canEdit && !isActive && (
+                    <button onClick={() => deleteDocument(doc.id, doc.title)}
+                      style={{ height: 28, padding: '0 8px', fontSize: 12, background: '#FCEBEB', border: '0.5px solid #F09595', borderRadius: 6, color: '#A32D2D', cursor: 'pointer' }}>
+                      Delete
+                    </button>
+                  )}
                 </div>
               </div>
             )

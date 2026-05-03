@@ -40,21 +40,18 @@ export async function GET(req: NextRequest) {
          ORDER BY d.title ASC`,
         [folder_id]
       )
-  // For docs with a new draft revision, attach last active version as _active_version field
+  // For docs with a new draft revision, also show the last active version above it
   const result: any[] = []
   for (const row of rows) {
     if (row.version_status === 'draft' && row.version_major > 1) {
       const av = await query(
-        `SELECT v.id, v.version_major, v.version_minor
+        `SELECT v.id AS current_version_id, v.version_major, v.version_minor, v.status AS version_status
          FROM eqms_document_versions v
          WHERE v.document_id = $1::uuid AND v.status = 'active'
          ORDER BY v.version_major DESC LIMIT 1`,
         [row.id]
       )
-      if (av.length > 0) {
-        result.push({ ...row, _active_version: { id: av[0].id, version_major: av[0].version_major, version_minor: av[0].version_minor } })
-        continue
-      }
+      if (av.length > 0) result.push({ ...row, ...av[0], _is_active_companion: true })
     }
     result.push(row)
   }
