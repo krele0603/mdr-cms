@@ -24,6 +24,8 @@ export async function middleware(req: NextRequest) {
       '/dashboard/projects',
       '/dashboard/companies',
       '/dashboard/eqms',
+      '/dashboard/help',
+      '/dashboard',
       '/api/',
     ]
     if (allowed.some(p => pathname.startsWith(p))) {

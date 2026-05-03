@@ -372,12 +372,20 @@ export default function DashboardNav({ user }: Props) {
         {/* Logo */}
         <div style={{ padding: '16px 20px', borderBottom: '0.5px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ fontSize: 13, fontWeight: 600, color: '#4e8c8c', letterSpacing: '0.05em' }}>EasyQMS</div>
-          <Link href='/dashboard' title='Home'
-            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 7, background: pathname === '/dashboard' ? 'rgba(78,140,140,0.2)' : 'rgba(255,255,255,0.05)', color: pathname === '/dashboard' ? '#4e8c8c' : 'rgba(255,255,255,0.4)', textDecoration: 'none', transition: 'background 0.15s' }}
-            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(78,140,140,0.2)'; (e.currentTarget as HTMLElement).style.color = '#4e8c8c' }}
-            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = pathname === '/dashboard' ? 'rgba(78,140,140,0.2)' : 'rgba(255,255,255,0.05)'; (e.currentTarget as HTMLElement).style.color = pathname === '/dashboard' ? '#4e8c8c' : 'rgba(255,255,255,0.4)' }}>
-            <svg width='15' height='15' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='1.75' strokeLinecap='round' strokeLinejoin='round'><path d='M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z'/><polyline points='9 22 9 12 15 12 15 22'/></svg>
-          </Link>
+          <div style={{ display: 'flex', gap: 4 }}>
+            <Link href='/dashboard' title='Home'
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 7, background: pathname === '/dashboard' ? 'rgba(78,140,140,0.2)' : 'rgba(255,255,255,0.05)', color: pathname === '/dashboard' ? '#4e8c8c' : 'rgba(255,255,255,0.4)', textDecoration: 'none' }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(78,140,140,0.2)'; (e.currentTarget as HTMLElement).style.color = '#4e8c8c' }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = pathname === '/dashboard' ? 'rgba(78,140,140,0.2)' : 'rgba(255,255,255,0.05)'; (e.currentTarget as HTMLElement).style.color = pathname === '/dashboard' ? '#4e8c8c' : 'rgba(255,255,255,0.4)' }}>
+              <svg width='15' height='15' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='1.75' strokeLinecap='round' strokeLinejoin='round'><path d='M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z'/><polyline points='9 22 9 12 15 12 15 22'/></svg>
+            </Link>
+            <Link href='/dashboard/help' title='Help'
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 7, background: pathname === '/dashboard/help' ? 'rgba(78,140,140,0.2)' : 'rgba(255,255,255,0.05)', color: pathname === '/dashboard/help' ? '#4e8c8c' : 'rgba(255,255,255,0.4)', textDecoration: 'none' }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(78,140,140,0.2)'; (e.currentTarget as HTMLElement).style.color = '#4e8c8c' }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = pathname === '/dashboard/help' ? 'rgba(78,140,140,0.2)' : 'rgba(255,255,255,0.05)'; (e.currentTarget as HTMLElement).style.color = pathname === '/dashboard/help' ? '#4e8c8c' : 'rgba(255,255,255,0.4)' }}>
+              <svg width='15' height='15' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='1.75' strokeLinecap='round' strokeLinejoin='round'><circle cx='12' cy='12' r='10'/><path d='M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3'/><line x1='12' y1='17' x2='12.01' y2='17'/></svg>
+            </Link>
+          </div>
         </div>
 
         {/* Nav */}
