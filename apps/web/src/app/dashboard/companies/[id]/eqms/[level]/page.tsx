@@ -119,6 +119,9 @@ export default function CompanyEqmsLevelPage() {
   const [newDocTitle, setNewDocTitle] = useState('')
   const [newDocCode, setNewDocCode] = useState('')
   const [savingDoc, setSavingDoc] = useState(false)
+  const [templates, setTemplates] = useState<{id:string;name:string}[]>([])
+  const [templateId, setTemplateId] = useState('')
+  const [loadingTemplates, setLoadingTemplates] = useState(false)
 
   const canEdit = ['admin', 'consultant'].includes(sessionRole)
 
@@ -199,6 +202,12 @@ export default function CompanyEqmsLevelPage() {
   async function createDocument() {
     if (!newDocTitle.trim() || !selectedFolder) return
     setSavingDoc(true)
+    // Fetch template content if selected
+    let templateContent = null
+    if (templateId) {
+      const tr = await fetch(`/api/qms-templates/${templateId}`)
+      if (tr.ok) { const td = await tr.json(); templateContent = td.content }
+    }
     const res = await fetch('/api/eqms/documents', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -207,6 +216,7 @@ export default function CompanyEqmsLevelPage() {
         title: newDocTitle.trim(),
         code: newDocCode.trim() || null,
         company_id: companyId,
+        template_content: templateContent,
       }),
     })
     if (res.ok) {
@@ -295,7 +305,14 @@ export default function CompanyEqmsLevelPage() {
               </div>
             </div>
             {canEdit && selectedFolder && (
-              <button onClick={() => setShowNewDoc(true)}
+              <button onClick={() => {
+                  setShowNewDoc(true)
+                  setTemplateId('')
+                  setLoadingTemplates(true)
+                  fetch(`/api/qms-templates?level=${level}`)
+                    .then(r => r.ok ? r.json() : [])
+                    .then(data => { setTemplates(data); setLoadingTemplates(false) })
+                }}
                 style={{ height: 30, padding: '0 14px', fontSize: 12, background: '#185FA5', border: 'none', borderRadius: 8, color: '#fff', cursor: 'pointer' }}>
                 + New document
               </button>
@@ -412,6 +429,27 @@ export default function CompanyEqmsLevelPage() {
                 <label style={{ display: 'block', fontSize: 12, color: '#5a6472', marginBottom: 4 }}>Document code</label>
                 <input value={newDocCode} onChange={e => setNewDocCode(e.target.value)} placeholder="e.g. POL-001"
                   style={{ width: '100%', padding: '8px 10px', fontSize: 13, border: '0.5px solid rgba(0,0,0,0.18)', borderRadius: 8, outline: 'none', fontFamily: 'monospace', boxSizing: 'border-box' as const }} />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 12, color: '#5a6472', marginBottom: 4 }}>Use template <span style={{color:'#9b9991',fontWeight:400}}>(optional)</span></label>
+                {loadingTemplates ? (
+                  <div style={{ fontSize: 12, color: '#9b9991' }}>Loading templates...</div>
+                ) : templates.length === 0 ? (
+                  <div style={{ fontSize: 12, color: '#9b9991', padding: '8px 10px', background: '#f8f7f4', borderRadius: 6 }}>No templates for this level.</div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 5, maxHeight: 160, overflowY: 'auto' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderRadius: 6, border: `0.5px solid ${templateId === '' ? meta.border : 'rgba(0,0,0,0.12)'}`, background: templateId === '' ? meta.bg : '#faf9f7', cursor: 'pointer' }}>
+                      <input type="radio" name="tpl" value="" checked={templateId === ''} onChange={() => setTemplateId('')} />
+                      <span style={{ fontSize: 12, fontWeight: 500, color: templateId === '' ? meta.color : '#1a1f24' }}>Blank document</span>
+                    </label>
+                    {templates.map(t => (
+                      <label key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderRadius: 6, border: `0.5px solid ${templateId === t.id ? meta.border : 'rgba(0,0,0,0.12)'}`, background: templateId === t.id ? meta.bg : '#faf9f7', cursor: 'pointer' }}>
+                        <input type="radio" name="tpl" value={t.id} checked={templateId === t.id} onChange={() => setTemplateId(t.id)} />
+                        <span style={{ fontSize: 12, fontWeight: 500, color: templateId === t.id ? meta.color : '#1a1f24' }}>{t.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
             <div style={{ padding: '12px 20px', borderTop: '0.5px solid rgba(0,0,0,0.08)', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>

@@ -67,7 +67,7 @@ export async function POST(req: NextRequest) {
   if (!['admin', 'consultant'].includes(session.role))
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  const { folder_id, level, title, code, company_id } = await req.json()
+  const { folder_id, level, title, code, company_id, template_content } = await req.json()
   if (!folder_id || !level || !title?.trim())
     return NextResponse.json({ error: 'folder_id, level and title are required' }, { status: 400 })
 
@@ -78,12 +78,16 @@ export async function POST(req: NextRequest) {
     [level, folder_id, code?.trim() || null, title.trim(), company_id || null, session.id]
   )
 
+  const initialContent = template_content
+    ? JSON.stringify(template_content)
+    : '{"type":"doc","content":[{"type":"paragraph"}]}'
+
   const version = await queryOne(
     `INSERT INTO eqms_document_versions
        (document_id, version_major, version_minor, content, status, created_by)
-     VALUES ($1::uuid, 1, 0, '{"type":"doc","content":[{"type":"paragraph"}]}', 'draft', $2::uuid)
+     VALUES ($1::uuid, 1, 0, $3, 'draft', $2::uuid)
      RETURNING id`,
-    [doc.id, session.id]
+    [doc.id, session.id, initialContent]
   )
 
   await query(
