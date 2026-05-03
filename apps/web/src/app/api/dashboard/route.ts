@@ -6,48 +6,57 @@ export async function GET() {
   const session = await getSession()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  // Stats
+  // Project filter per role
+  const isAdmin = session.role === 'admin'
+  const isConsultant = session.role === 'consultant'
+  const isClient = session.role === 'client' || session.role === 'client-MR'
+
+  const consultantFilter = `p.id IN (
+    SELECT p2.id FROM projects p2
+    JOIN company_members cm ON cm.company_id = p2.company_id AND cm.user_id = $1::uuid
+  )`
+
+  const clientFilter = `p.id IN (
+    SELECT project_id FROM project_members WHERE user_id = $1::uuid
+  )`
+
+  const whereClause = isConsultant ? `WHERE ${consultantFilter}`
+    : isClient ? `WHERE ${clientFilter}` : ''
+
+  const params = !isAdmin ? [session.id] : []
+
   const stats = await queryOne(`
     SELECT
-      COUNT(DISTINCT p.id) FILTER (WHERE p.status = 'active')::int        AS active_projects,
-      COUNT(DISTINCT p.id)::int                                            AS total_projects,
-      COUNT(DISTINCT t.id)::int                                            AS templates,
-      COUNT(DISTINCT pd.id) FILTER (WHERE pd.status = 'review')::int      AS pending_review,
-      COUNT(DISTINCT pd.id) FILTER (WHERE pd.status = 'approved')::int    AS approved_docs,
-      COUNT(DISTINCT pd.id)::int                                           AS total_docs
+      COUNT(DISTINCT p.id) FILTER (WHERE p.status = 'active')::int     AS active_projects,
+      COUNT(DISTINCT p.id)::int                                         AS total_projects,
+      COUNT(DISTINCT t.id)::int                                         AS templates,
+      COUNT(DISTINCT pd.id) FILTER (WHERE pd.status = 'review')::int   AS pending_review,
+      COUNT(DISTINCT pd.id) FILTER (WHERE pd.status = 'approved')::int AS approved_docs,
+      COUNT(DISTINCT pd.id)::int                                        AS total_docs
     FROM projects p
     LEFT JOIN project_documents pd ON pd.project_id = p.id
     LEFT JOIN templates t ON TRUE
-    ${session.role === 'consultant' ? `WHERE p.id IN (
-      SELECT project_id FROM project_members WHERE user_id = $1::uuid
-      UNION SELECT id FROM projects WHERE created_by = $1::uuid
-    )` : session.role === 'client' ? `WHERE p.id IN (
-      SELECT project_id FROM project_members WHERE user_id = $1::uuid
-    )` : ''}
-  `, session.role !== 'admin' ? [session.id] : [])
+    ${whereClause}
+  `, params)
 
-  // Projects with progress
   const projects = await query(`
     SELECT
       p.id, p.name, p.device_name, p.status, p.created_at,
-      COUNT(pd.id)::int                                             AS total_docs,
-      COUNT(pd.id) FILTER (WHERE pd.status = 'approved')::int      AS approved_docs,
-      COUNT(pd.id) FILTER (WHERE pd.status = 'review')::int        AS review_docs,
-      COUNT(pd.id) FILTER (WHERE pd.status = 'inprogress')::int    AS inprogress_docs
+      COUNT(pd.id)::int                                            AS total_docs,
+      COUNT(pd.id) FILTER (WHERE pd.status = 'approved')::int     AS approved_docs,
+      COUNT(pd.id) FILTER (WHERE pd.status = 'review')::int       AS review_docs,
+      COUNT(pd.id) FILTER (WHERE pd.status = 'inprogress')::int   AS inprogress_docs
     FROM projects p
     LEFT JOIN project_documents pd ON pd.project_id = p.id
-    ${session.role === 'consultant' ? `WHERE p.id IN (
-      SELECT project_id FROM project_members WHERE user_id = $1::uuid
-      UNION SELECT id FROM projects WHERE created_by = $1::uuid
-    )` : session.role === 'client' ? `WHERE p.id IN (
-      SELECT project_id FROM project_members WHERE user_id = $1::uuid
-    )` : ''}
+    ${whereClause}
     GROUP BY p.id, p.name, p.device_name, p.status, p.created_at
     ORDER BY p.updated_at DESC NULLS LAST, p.created_at DESC
     LIMIT 6
-  `, session.role !== 'admin' ? [session.id] : [])
+  `, params)
 
-  // Records needing attention (in review)
+  const andClause = isConsultant ? `AND ${consultantFilter}`
+    : isClient ? `AND ${clientFilter}` : ''
+
   const needsAttention = await query(`
     SELECT
       pd.id, pd.name, pd.annex, pd.status, pd.updated_at,
@@ -58,15 +67,10 @@ export async function GET() {
     JOIN projects p ON p.id = pd.project_id
     LEFT JOIN users u ON u.id = pd.approved_by
     WHERE pd.status = 'review'
-    ${session.role === 'consultant' ? `AND p.id IN (
-      SELECT project_id FROM project_members WHERE user_id = $1::uuid
-      UNION SELECT id FROM projects WHERE created_by = $1::uuid
-    )` : session.role === 'client' ? `AND p.id IN (
-      SELECT project_id FROM project_members WHERE user_id = $1::uuid
-    )` : ''}
+    ${andClause}
     ORDER BY pd.updated_at DESC
     LIMIT 8
-  `, session.role !== 'admin' ? [session.id] : [])
+  `, params)
 
   return NextResponse.json({ stats, projects, needsAttention })
 }
