@@ -44,7 +44,7 @@ function buildLayoutTable(layout: Layout, docx: any, ctx: {
     ? layout.colWidths
     : Array(layout.cols).fill(Math.floor(100 / layout.cols))
 
-  const rowHeightVal = (layout.rowHeight || 40) * 15 // convert px to twips approx
+  const rowHeightVal = (layout.rowHeight || 40) * 15
 
   const getAlign = (a: string) => a === 'center' ? AlignmentType.CENTER : a === 'right' ? AlignmentType.RIGHT : AlignmentType.LEFT
   const getVAlign = (a?: string) => a === 'top' ? 'top' : a === 'bottom' ? 'bottom' : 'center'
@@ -112,10 +112,7 @@ function buildLayoutTable(layout: Layout, docx: any, ctx: {
         verticalAlign: getVAlign(cell.verticalAlign) as any,
       })
     })
-    return new TableRow({
-      children: cells,
-      height: { value: rowHeightVal, rule: 'exact' as any },
-    })
+    return new TableRow({ children: cells, height: { value: rowHeightVal, rule: 'exact' as any } })
   })
 
   return [new Table({
@@ -182,10 +179,21 @@ function convertNode(node: any, docx: any): any[] {
         const parsed = parseDataUrl(src)
         if (parsed) {
           try {
-            results.push(new Paragraph({ children: [new ImageRun({ data: parsed.buffer, transformation: { width: 530, height: 350 } })], spacing: { before: 120, after: 120 } }))
+            // Attempt to get natural dimensions; fall back to safe defaults
+            const maxW = 530
+            const maxH = 400
+            const w = node.attrs?.width ? Math.min(Number(node.attrs.width), maxW) : maxW
+            const h = node.attrs?.height ? Math.min(Number(node.attrs.height), maxH) : Math.round(w * 0.6)
+            results.push(new Paragraph({
+              children: [new ImageRun({ data: parsed.buffer, transformation: { width: w, height: h }, type: parsed.ext as any })],
+              spacing: { before: 120, after: 120 },
+            }))
           } catch {
             results.push(new Paragraph({ children: [new TextRun({ text: '[Image]', color: '8a96a2', italics: true })] }))
           }
+        } else {
+          // src is not a data URL (e.g. external URL) — skip gracefully
+          results.push(new Paragraph({ children: [new TextRun({ text: '[External image]', color: '8a96a2', italics: true })] }))
         }
       }
       break
@@ -271,13 +279,23 @@ export async function GET(req: NextRequest, { params }: Params) {
     const { Document, Packer, Paragraph, TextRun, AlignmentType, Header, Footer, NumberFormat } = docx
 
     const { query: dbQuery } = await import('@/lib/db')
+
+    // ── KEY FIX: fetch variable_type so resolveVariablesInContent knows
+    //    which variables hold rich JSON vs plain text ──────────────────
     const vars = await dbQuery(
-      `SELECT tag, value FROM project_variables WHERE project_id = $1::uuid AND value != ''`,
+      `SELECT tag, value, variable_type FROM project_variables
+       WHERE project_id = $1::uuid AND value != '' AND value IS NOT NULL`,
       [params.id]
     )
 
     const rawContent = doc.content || {}
-    const content = Object.keys(rawContent).length > 0 ? resolveVariablesInContent(rawContent, vars as any[]) : rawContent
+    console.log('[Export] vars:', vars.length, (vars as any[]).map((v: any) => v.tag + '=' + v.variable_type).join(', '))
+    const content = Object.keys(rawContent).length > 0
+      ? resolveVariablesInContent(rawContent, vars as any[])
+      : rawContent
+    console.log('[Export] content nodes:', (content as any)?.content?.length)
+    console.log('[Export] resolved nodes:', JSON.stringify((content as any)?.content?.map((n: any) => ({ type: n.type, childCount: n.content?.length, firstChild: n.content?.[0]?.type }))))
+
     const bodyChildren = Object.keys(content).length > 0
       ? convertNode(content, docx)
       : [new Paragraph({ children: [new TextRun({ text: '(No content)', color: '999999', italics: true })] })]

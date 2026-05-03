@@ -978,13 +978,29 @@ export default function DocumentEditorPage() {
   // Re-render variable chips when variable values load
   useEffect(() => {
     if (variables.length === 0) return
-    document.querySelectorAll('[data-variable]').forEach((el: Element) => {
-      const tag = el.getAttribute('data-variable')
-      if (!tag) return
-      const value = (window as any).__projectVariables?.[tag] || null
-      el.textContent = value || tag
-      el.className = value ? 'variable-chip' : 'variable-chip variable-chip--empty'
-    })
+    const update = () => {
+      document.querySelectorAll('[data-variable]').forEach((el: Element) => {
+        const tag = el.getAttribute('data-variable')
+        if (!tag) return
+        // Skip block-level rich variable elements — addNodeView handles those via polling
+        if (el.classList.contains('variable-block')) return
+        const entry = (window as any).__projectVariables?.[tag] || null
+        const isRich = entry?.type === 'rich_text'
+        if (isRich) {
+          // Rich chips just show tag name — block rendering done by addNodeView
+          el.textContent = tag
+          el.className = entry?.value ? 'variable-chip variable-chip--rich' : 'variable-chip variable-chip--empty'
+          return
+        }
+        const value = (entry && typeof entry === 'object') ? entry.value : (entry || null)
+        const hasValue = !!(value && typeof value === 'string' && value.length > 0)
+        el.textContent = hasValue ? value : tag
+        el.className = hasValue ? 'variable-chip' : 'variable-chip variable-chip--empty'
+      })
+    }
+    update()
+    const t = setTimeout(update, 400)
+    return () => clearTimeout(t)
   }, [variables])
 
   useEffect(() => { if (showComments) { loadComments(); loadHistory() } }, [showComments])

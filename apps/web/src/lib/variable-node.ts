@@ -1,5 +1,22 @@
 import { Node, mergeAttributes } from '@tiptap/core'
 
+// ââ Types ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+interface ProjectVariable {
+  tag: string
+  value: string
+  variable_type?: string  // 'text' | 'rich_text'
+}
+
+// Global map: tag â { value, type }
+declare global {
+  interface Window {
+    __projectVariables: Record<string, { value: string; type: string }>
+  }
+}
+
+// ââ VariableNode âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// Inline atom for text variables.
+// Rich-text variables are rendered as a block wrapper (see addNodeView).
 export const VariableNode = Node.create({
   name: 'variableNode',
   group: 'inline',
@@ -18,14 +35,14 @@ export const VariableNode = Node.create({
 
   renderHTML({ node, HTMLAttributes }) {
     const tag = node.attrs.tag
-    const value = typeof window !== 'undefined'
-      ? (window as any).__projectVariables?.[tag] || null
-      : null
-    const display = value || tag
+    const entry = typeof window !== 'undefined' ? window.__projectVariables?.[tag] : null
+    const isRich = entry?.type === 'rich_text'
+    const value = entry?.value || null
+    const display = isRich ? `[${tag}]` : (value || tag)
     const isEmpty = !value
     return ['span', mergeAttributes(HTMLAttributes, {
       'data-variable': tag,
-      class: isEmpty ? 'variable-chip variable-chip--empty' : 'variable-chip',
+      class: isEmpty ? 'variable-chip variable-chip--empty' : (isRich ? 'variable-chip variable-chip--rich' : 'variable-chip'),
       contenteditable: 'false',
       title: tag,
     }), display]
@@ -33,20 +50,56 @@ export const VariableNode = Node.create({
 
   addNodeView() {
     return ({ node }) => {
-      const dom = document.createElement('span')
       const tag = node.attrs.tag
-      const value = (window as any).__projectVariables?.[tag] || null
-      const isEmpty = !value
-      dom.setAttribute('data-variable', tag)
-      dom.setAttribute('contenteditable', 'false')
-      dom.setAttribute('title', isEmpty ? `${tag} (not defined)` : `${tag}`)
-      dom.className = isEmpty ? 'variable-chip variable-chip--empty' : 'variable-chip'
-      dom.textContent = value || tag
-      return { dom }
+      const outer = document.createElement('span')
+      outer.setAttribute('contenteditable', 'false')
+
+      const render = () => {
+        const entry = typeof window !== 'undefined' ? window.__projectVariables?.[tag] : null
+        const isRich = entry?.type === 'rich_text'
+        const value = (entry && typeof entry === 'object') ? (entry.value || null) : null
+        const isEmpty = !value
+        outer.innerHTML = ''
+        if (isRich && value) {
+          const block = document.createElement('div')
+          block.setAttribute('data-variable', tag)
+          block.setAttribute('contenteditable', 'false')
+          block.className = 'variable-block'
+          const label = document.createElement('div')
+          label.className = 'variable-block__label'
+          label.textContent = tag
+          block.appendChild(label)
+          const content = document.createElement('div')
+          content.className = 'variable-block__content'
+          content.innerHTML = richJsonToHtml(tryParseJson(value))
+          block.appendChild(content)
+          outer.appendChild(block)
+        } else {
+          const chip = document.createElement('span')
+          chip.setAttribute('data-variable', tag)
+          chip.setAttribute('contenteditable', 'false')
+          chip.className = isEmpty ? 'variable-chip variable-chip--empty' : (isRich ? 'variable-chip variable-chip--rich' : 'variable-chip')
+          chip.textContent = (value && typeof value === 'string') ? value : tag
+          outer.appendChild(chip)
+        }
+      }
+
+      render()
+
+      const interval = setInterval(() => {
+        if (typeof window !== 'undefined' && window.__projectVariables?.[tag]) {
+          render()
+          clearInterval(interval)
+        }
+      }, 200)
+      setTimeout(() => clearInterval(interval), 10000)
+
+      return { dom: outer }
     }
   },
 })
 
+// ââ Styles âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 export const VARIABLE_STYLES = `
   .variable-chip {
     display: inline;
@@ -66,35 +119,179 @@ export const VARIABLE_STYLES = `
     border-color: rgba(200,169,110,0.4);
     font-style: italic;
   }
+  .variable-chip--rich {
+    background: rgba(78,140,140,0.08);
+    color: #2e5f5f;
+    border-color: rgba(78,140,140,0.4);
+    font-style: italic;
+    font-size: 0.9em;
+  }
+  .variable-block {
+    display: block;
+    border-left: 3px solid rgba(78,140,140,0.5);
+    padding: 8px 12px;
+    margin: 6px 0;
+    background: rgba(78,140,140,0.04);
+    border-radius: 0 4px 4px 0;
+    user-select: none;
+  }
+  .variable-block__label {
+    font-size: 10px;
+    font-weight: 600;
+    color: #4e8c8c;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+  .variable-block__content {
+    font-size: 13px;
+    line-height: 1.7;
+    color: #1a1f24;
+  }
+  .variable-block__content p { margin: 0 0 6px; }
+  .variable-block__content p:last-child { margin-bottom: 0; }
+  .variable-block__content ul { list-style: disc; padding-left: 18px; margin: 4px 0; }
+  .variable-block__content ol { list-style: decimal; padding-left: 18px; margin: 4px 0; }
+  .variable-block__content img { max-width: 100%; max-height: 320px; border-radius: 3px; margin: 4px 0; }
 `
 
-export function setProjectVariables(variables: { tag: string; value: string }[]) {
+// ââ Helpers âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+export function setProjectVariables(variables: ProjectVariable[]) {
   if (typeof window === 'undefined') return
-  const map: Record<string, string> = {}
+  const map: Record<string, { value: string; type: string }> = {}
   for (const v of variables) {
-    if (v.value) map[v.tag] = v.value
+    if (v.value) map[v.tag] = { value: v.value, type: v.variable_type || 'text' }
   }
-  ;(window as any).__projectVariables = map
+  window.__projectVariables = map
 }
 
-export function resolveVariablesInContent(content: any, variables: { tag: string; value: string }[]): any {
-  if (!content) return content
-  const map: Record<string, string> = {}
-  for (const v of variables) map[v.tag] = v.value || v.tag
+// Convert TipTap JSON to simple HTML for display inside variable block
+export function richJsonToHtml(doc: any): string {
+  if (!doc || !doc.content) return ''
+  return doc.content.map(nodeToHtml).join('')
+}
 
-  function resolve(node: any): any {
-    if (node.type === 'variableNode') {
-      return { type: 'text', text: map[node.attrs?.tag] || node.attrs?.tag || '' }
+function nodeToHtml(node: any): string {
+  if (!node) return ''
+  switch (node.type) {
+    case 'paragraph': {
+      const inner = (node.content || []).map(nodeToHtml).join('')
+      return `<p>${inner || '<br>'}</p>`
     }
-    if (node.content) return { ...node, content: node.content.map(resolve) }
+    case 'text': {
+      let t = escapeHtml(node.text || '')
+      if (node.marks) {
+        for (const mark of node.marks) {
+          if (mark.type === 'bold') t = `<strong>${t}</strong>`
+          else if (mark.type === 'italic') t = `<em>${t}</em>`
+          else if (mark.type === 'underline') t = `<u>${t}</u>`
+        }
+      }
+      return t
+    }
+    case 'bulletList':
+      return `<ul>${(node.content || []).map(nodeToHtml).join('')}</ul>`
+    case 'orderedList':
+      return `<ol>${(node.content || []).map(nodeToHtml).join('')}</ol>`
+    case 'listItem':
+      return `<li>${(node.content || []).map(nodeToHtml).join('')}</li>`
+    case 'image':
+      return `<img src="${node.attrs?.src || ''}" alt="${escapeHtml(node.attrs?.alt || '')}" style="max-width:100%;max-height:320px;">`
+    case 'hardBreak':
+      return '<br>'
+    default:
+      return (node.content || []).map(nodeToHtml).join('')
+  }
+}
+
+function escapeHtml(str: string): string {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
+function tryParseJson(value: string): any {
+  try { return JSON.parse(value) } catch { return null }
+}
+
+// ââ Export resolver âââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// Walks document JSON and replaces variableNode atoms with their resolved content.
+// For text variables â single text node.
+// For rich_text variables â inlines the full content nodes from the variable doc.
+export function resolveVariablesInContent(content: any, variables: ProjectVariable[]): any {
+  if (!content) return content
+
+  const map: Record<string, ProjectVariable> = {}
+  for (const v of variables) map[v.tag] = v
+
+  function resolveNode(node: any): any | any[] {
+    if (node.type === 'variableNode') {
+      const v = map[node.attrs?.tag]
+      if (!v) return { type: 'text', text: node.attrs?.tag || '' }
+
+      if (v.variable_type === 'rich_text' && v.value) {
+        const parsed = tryParseJson(v.value)
+        if (parsed?.content) {
+          // Mark nodes as coming from rich variable so parent can handle them
+          return parsed.content.map((n: any) => ({ ...n, _fromRichVar: true }))
+        }
+      }
+      // Plain text fallback
+      return { type: 'text', text: v.value || v.tag }
+    }
+
+    if (node.content) {
+      const resolved: any[] = []
+      for (const child of node.content) {
+        const r = resolveNode(child)
+        if (Array.isArray(r)) resolved.push(...r)
+        else resolved.push(r)
+      }
+
+      // If this paragraph now contains block-level nodes (from rich var),
+      // extract them out and return as siblings instead
+      if (node.type === 'paragraph') {
+        const hasBlocks = resolved.some((n: any) => n._fromRichVar && n.type !== 'text')
+        if (hasBlocks) {
+          // Split: text before, rich blocks, text after
+          const result: any[] = []
+          let inlineBuffer: any[] = []
+          for (const n of resolved) {
+            if (n._fromRichVar && n.type !== 'text') {
+              if (inlineBuffer.length > 0) {
+                result.push({ type: 'paragraph', content: inlineBuffer })
+                inlineBuffer = []
+              }
+              const { _fromRichVar, ...clean } = n
+              result.push(clean)
+            } else {
+              const { _fromRichVar, ...clean } = n
+              inlineBuffer.push(clean)
+            }
+          }
+          if (inlineBuffer.length > 0) result.push({ type: 'paragraph', content: inlineBuffer })
+          return result
+        }
+      }
+
+      return { ...node, content: resolved.map(({ _fromRichVar, ...n }: any) => n) }
+    }
+
     return node
   }
 
-  return resolve(content)
+  function resolveDoc(doc: any): any {
+    const resolvedContent: any[] = []
+    for (const node of doc.content || []) {
+      const r = resolveNode(node)
+      if (Array.isArray(r)) resolvedContent.push(...r)
+      else resolvedContent.push(r)
+    }
+    return { ...doc, content: resolvedContent }
+  }
+
+  return resolveDoc(content)
 }
 
-
-// ── RiskMatrixNode — renders live risk matrix from FMEA data ─────────────────
+// ââ RiskMatrixNode (unchanged) âââââââââââââââââââââââââââââââââââââââââââââ
 export const RiskMatrixNode = Node.create({
   name: 'riskMatrixNode',
   group: 'block',
@@ -126,7 +323,6 @@ export const RiskMatrixNode = Node.create({
           const listRes = await fetch('/api/projects/' + projectId + '/fmea')
           if (!listRes.ok) throw new Error('no fmea')
           const fmeaData = await listRes.json()
-          // API returns { fmea, sheets, criteria, ... }
           if (!fmeaData.fmea) throw new Error('no fmea doc')
 
           const criteria = fmeaData.criteria || {}
