@@ -287,6 +287,42 @@ export async function GET(req: NextRequest, { params }: Params) {
        WHERE project_id = $1::uuid AND value != '' AND value IS NOT NULL`,
       [params.id]
     )
+    // Also fetch company variables and merge (project vars take priority)
+    const projectCompany = await dbQuery(
+      `SELECT company_id FROM projects WHERE id = $1::uuid`,
+      [params.id]
+    )
+    const companyId = projectCompany[0]?.company_id
+    if (companyId) {
+      const companyVars = await dbQuery(
+        `SELECT tag, value, 'text' as variable_type FROM company_variables
+         WHERE company_id = $1::uuid AND value != '' AND value IS NOT NULL`,
+        [companyId]
+      )
+      // Add legacy $manufacturer_* aliases
+      const aliases: Record<string, string> = {
+        '$manufacturer_name':    '$company_name',
+        '$manufacturer_address': '$company_address',
+        '$manufacturer_contact': '$company_contact',
+        '$manufacturer_email':   '$company_email',
+      }
+      const existingTags = new Set((vars as any[]).map((v: any) => v.tag))
+      for (const cv of companyVars as any[]) {
+        if (!existingTags.has(cv.tag)) {
+          (vars as any[]).push(cv)
+          existingTags.add(cv.tag)
+        }
+      }
+      // Add aliases for legacy tags
+      for (const [oldTag, newTag] of Object.entries(aliases)) {
+        if (!existingTags.has(oldTag)) {
+          const companyVar = (companyVars as any[]).find((v: any) => v.tag === newTag)
+          if (companyVar) {
+            (vars as any[]).push({ tag: oldTag, value: companyVar.value, variable_type: 'text' })
+          }
+        }
+      }
+    }
 
     const rawContent = doc.content || {}
     console.log('[Export] vars:', vars.length, (vars as any[]).map((v: any) => v.tag + '=' + v.variable_type).join(', '))

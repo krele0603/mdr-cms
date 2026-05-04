@@ -19,6 +19,7 @@ import Color from '@tiptap/extension-color'
 import Image from '@tiptap/extension-image'
 import TextStyle from '@tiptap/extension-text-style'
 import { TableOfContents, getHierarchicalIndexes } from '@tiptap/extension-table-of-contents'
+import { VariableNode, setProjectVariables, mergeCompanyVariables } from '@/lib/variable-node'
 
 type SaveState = 'saved' | 'saving' | 'unsaved' | 'error'
 
@@ -466,7 +467,7 @@ function Toolbar({ editor, sizes, onSizeChange, showOutline, onToggleOutline, on
 
 function makeExtensions(onTocUpdate: (items: any[]) => void) {
   return [
-    StarterKit, TextStyle, FontFamily, Underline, Color, Image.configure({ inline: false, allowBase64: true }),
+    StarterKit, TextStyle, FontFamily, Underline, Color, VariableNode, Image.configure({ inline: false, allowBase64: true }),
     Highlight.configure({ multicolor: true }),
     TextAlign.configure({ types: ['heading', 'paragraph'] }),
     Table.configure({ resizable: true }),
@@ -490,6 +491,7 @@ export default function EqmsDocumentEditor() {
   const [saveState, setSaveState] = useState<SaveState>('saved')
   const [sessionRole, setSessionRole] = useState('')
   const [showVersions, setShowVersions] = useState(false)
+  const [companyVars, setCompanyVars] = useState<any[]>([])
   const [showChangeNote, setShowChangeNote] = useState(false)
   const [changeNote, setChangeNote] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -534,6 +536,12 @@ export default function EqmsDocumentEditor() {
     setDoc(data.doc)
     setVersions(data.versions)
     setCompany(companyData.company)
+    // Load company variables
+    setProjectVariables([])
+    const cvarsRes = await fetch(`/api/companies/${companyId}/variables`)
+    const cvars = cvarsRes.ok ? await cvarsRes.json() : []
+    mergeCompanyVariables(cvars)
+    setCompanyVars(cvars)
     setLoading(false)
     setEditorReady(true)
   }
@@ -675,6 +683,7 @@ export default function EqmsDocumentEditor() {
           onSizeChange={(k, v) => setSizes(p => ({ ...p, [k]: v }))}
           showOutline={showOutline} onToggleOutline={() => setShowOutline(v => !v)}
           onInsertToc={insertToc} onInsertImage={insertImage}
+          variables={companyVars}
           zoom={zoom} onZoomChange={setZoom}
         />
       )}

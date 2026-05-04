@@ -63,7 +63,7 @@ export async function GET(req: NextRequest, { params }: Params) {
   )
 
   const project = await queryOne(
-    `SELECT header_logo_url, device_name, manufacturer_name FROM projects WHERE id = $1::uuid`,
+    `SELECT header_logo_url, device_name, manufacturer_name, company_id FROM projects WHERE id = $1::uuid`,
     [params.id]
   )
 

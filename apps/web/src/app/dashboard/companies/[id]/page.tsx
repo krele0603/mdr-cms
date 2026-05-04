@@ -56,6 +56,15 @@ export default function CompanyPage() {
   const [savingAccess, setSavingAccess] = useState<string | null>(null)
   // New project modal
   const [showNewProject, setShowNewProject] = useState(false)
+  const [companyVars, setCompanyVars] = useState<any[]>([])
+  const [savingVar, setSavingVar] = useState<Record<string, boolean>>({})
+  const [showAddVar, setShowAddVar] = useState(false)
+  const [newVarTag, setNewVarTag] = useState('')
+  const [newVarName, setNewVarName] = useState('')
+  const [newVarValue, setNewVarValue] = useState('')
+  const [addingVar, setAddingVar] = useState(false)
+  const [editingVarId, setEditingVarId] = useState<string | null>(null)
+  const [editingVarValue, setEditingVarValue] = useState('')
   const [lists, setLists] = useState<DocList[]>([])
   const [projectForm, setProjectForm] = useState({ name: '', device_name: '', list_id: '', description: '' })
   const [projectFormError, setProjectFormError] = useState('')
@@ -64,6 +73,7 @@ export default function CompanyPage() {
   useEffect(() => {
     fetch('/api/auth/session').then(r => r.json()).then(d => setSessionRole(d?.user?.role || ''))
     load()
+    loadVars()
     fetch('/api/lists').then(r => r.ok ? r.json() : { lists: [] }).then(d => setLists(d.lists || []))
   }, [id])
 
@@ -81,6 +91,43 @@ export default function CompanyPage() {
     }, 300)
     return () => clearTimeout(t)
   }, [userSearch, members])
+
+  async function loadVars() {
+    const res = await fetch(`/api/companies/${id}/variables`)
+    if (res.ok) setCompanyVars(await res.json())
+  }
+
+  async function patchVar(varId: string, value: string) {
+    setSavingVar(s => ({ ...s, [varId]: true }))
+    await fetch(`/api/companies/${id}/variables/${varId}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ value }),
+    })
+    setSavingVar(s => ({ ...s, [varId]: false }))
+    setCompanyVars(prev => prev.map(v => v.id === varId ? { ...v, value } : v))
+    setEditingVarId(null)
+  }
+
+  async function addVar() {
+    if (!newVarTag.trim() || !newVarName.trim()) return
+    setAddingVar(true)
+    const tag = newVarTag.trim().startsWith('$') ? newVarTag.trim() : '$' + newVarTag.trim()
+    const res = await fetch(`/api/companies/${id}/variables`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tag, name: newVarName.trim(), value: newVarValue }),
+    })
+    if (res.ok) {
+      setShowAddVar(false); setNewVarTag(''); setNewVarName(''); setNewVarValue('')
+      loadVars()
+    }
+    setAddingVar(false)
+  }
+
+  async function deleteVar(varId: string) {
+    if (!confirm('Delete this variable?')) return
+    await fetch(`/api/companies/${id}/variables/${varId}`, { method: 'DELETE' })
+    loadVars()
+  }
 
   async function load() {
     setLoading(true)
@@ -195,6 +242,7 @@ export default function CompanyPage() {
   if (!company) return null
 
   const isAdmin = sessionRole === 'admin'
+  const canEdit = ['admin', 'consultant'].includes(sessionRole)
 
   return (
     <div>
@@ -486,6 +534,107 @@ export default function CompanyPage() {
           </div>
         )}
       </div>
+      {/* Company Variables */}
+      <div style={{ background: '#fff', border: '0.5px solid rgba(0,0,0,0.1)', borderRadius: 12, overflow: 'hidden', marginBottom: 14 }}>
+        <div style={{ padding: '12px 20px', borderBottom: '0.5px solid rgba(0,0,0,0.08)', background: '#f8f7f4', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ fontSize: 13, fontWeight: 500 }}>Company Variables</div>
+          {canEdit && (
+            <button onClick={() => { setShowAddVar(v => !v); setNewVarTag(''); setNewVarName(''); setNewVarValue('') }}
+              style={{ height: 26, padding: '0 10px', fontSize: 11, background: '#185FA5', border: 'none', borderRadius: 6, color: '#fff', cursor: 'pointer' }}>
+              + Add variable
+            </button>
+          )}
+        </div>
+        <div style={{ padding: '16px 20px' }}>
+          {/* Global variables */}
+          <div style={{ fontSize: 11, fontWeight: 600, color: '#9b9991', letterSpacing: '0.06em', textTransform: 'uppercase' as const, marginBottom: 10 }}>Global</div>
+          <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 6, marginBottom: 20 }}>
+            {companyVars.filter(v => v.is_global).map(v => (
+              <div key={v.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 8, background: '#f8f7f4', border: '0.5px solid rgba(0,0,0,0.06)' }}>
+                <span style={{ fontSize: 11, fontFamily: 'monospace', color: '#185FA5', background: '#E6F1FB', padding: '2px 8px', borderRadius: 4, border: '0.5px solid #85B7EB', flexShrink: 0, minWidth: 140 }}>{v.tag}</span>
+                <span style={{ fontSize: 11, color: '#6b6a64', flexShrink: 0, width: 140 }}>{v.name}</span>
+                {editingVarId === v.id ? (
+                  <input value={editingVarValue} onChange={e => setEditingVarValue(e.target.value)} autoFocus
+                    onBlur={() => patchVar(v.id, editingVarValue)}
+                    onKeyDown={e => { if (e.key === 'Enter') patchVar(v.id, editingVarValue); if (e.key === 'Escape') setEditingVarId(null) }}
+                    style={{ flex: 1, padding: '4px 8px', fontSize: 12, border: '1px solid #185FA5', borderRadius: 6, outline: 'none' }} />
+                ) : (
+                  <div onClick={() => canEdit ? (setEditingVarId(v.id), setEditingVarValue(v.value)) : null}
+                    style={{ flex: 1, fontSize: 12, color: v.value ? '#1a1a18' : '#ccc', fontStyle: v.value ? 'normal' : 'italic', cursor: canEdit ? 'text' : 'default', padding: '4px 0' }}>
+                    {v.value || (canEdit ? 'Click to set value…' : '—')}
+                  </div>
+                )}
+                {savingVar[v.id] && <span style={{ fontSize: 10, color: '#c8a96e', flexShrink: 0 }}>Saving…</span>}
+              </div>
+            ))}
+          </div>
+
+          {/* Custom variables */}
+          {companyVars.filter(v => !v.is_global).length > 0 && (
+            <>
+              <div style={{ fontSize: 11, fontWeight: 600, color: '#9b9991', letterSpacing: '0.06em', textTransform: 'uppercase' as const, marginBottom: 10 }}>Custom</div>
+              <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 6, marginBottom: 16 }}>
+                {companyVars.filter(v => !v.is_global).map(v => (
+                  <div key={v.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 8, background: '#f8f7f4', border: '0.5px solid rgba(0,0,0,0.06)' }}>
+                    <span style={{ fontSize: 11, fontFamily: 'monospace', color: '#2e5f5f', background: 'rgba(78,140,140,0.1)', padding: '2px 8px', borderRadius: 4, border: '0.5px solid rgba(78,140,140,0.3)', flexShrink: 0, minWidth: 140 }}>{v.tag}</span>
+                    <span style={{ fontSize: 11, color: '#6b6a64', flexShrink: 0, width: 140 }}>{v.name}</span>
+                    {editingVarId === v.id ? (
+                      <input value={editingVarValue} onChange={e => setEditingVarValue(e.target.value)} autoFocus
+                        onBlur={() => patchVar(v.id, editingVarValue)}
+                        onKeyDown={e => { if (e.key === 'Enter') patchVar(v.id, editingVarValue); if (e.key === 'Escape') setEditingVarId(null) }}
+                        style={{ flex: 1, padding: '4px 8px', fontSize: 12, border: '1px solid #185FA5', borderRadius: 6, outline: 'none' }} />
+                    ) : (
+                      <div onClick={() => canEdit ? (setEditingVarId(v.id), setEditingVarValue(v.value)) : null}
+                        style={{ flex: 1, fontSize: 12, color: v.value ? '#1a1a18' : '#ccc', fontStyle: v.value ? 'normal' : 'italic', cursor: canEdit ? 'text' : 'default', padding: '4px 0' }}>
+                        {v.value || (canEdit ? 'Click to set value…' : '—')}
+                      </div>
+                    )}
+                    {savingVar[v.id] && <span style={{ fontSize: 10, color: '#c8a96e', flexShrink: 0 }}>Saving…</span>}
+                    {canEdit && (
+                      <button onClick={() => deleteVar(v.id)} style={{ background: 'none', border: 'none', color: '#e57373', cursor: 'pointer', fontSize: 14, flexShrink: 0 }}>×</button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
+          {/* Add variable form */}
+          {showAddVar && canEdit && (
+            <div style={{ padding: '14px', background: '#f0f7ff', borderRadius: 8, border: '0.5px solid #85B7EB', display: 'flex', flexDirection: 'column' as const, gap: 10 }}>
+              <div style={{ fontSize: 12, fontWeight: 500, color: '#0C447C' }}>New company variable</div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <div style={{ flex: 1 }}>
+                  <label style={{ display: 'block', fontSize: 11, color: '#6b6a64', marginBottom: 3 }}>Tag (starts with $)</label>
+                  <input value={newVarTag} onChange={e => setNewVarTag(e.target.value)} placeholder="$my_variable" autoFocus
+                    style={{ width: '100%', padding: '6px 8px', fontSize: 12, border: '0.5px solid rgba(0,0,0,0.2)', borderRadius: 6, outline: 'none', fontFamily: 'monospace', boxSizing: 'border-box' as const }} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label style={{ display: 'block', fontSize: 11, color: '#6b6a64', marginBottom: 3 }}>Display name</label>
+                  <input value={newVarName} onChange={e => setNewVarName(e.target.value)} placeholder="My Variable"
+                    style={{ width: '100%', padding: '6px 8px', fontSize: 12, border: '0.5px solid rgba(0,0,0,0.2)', borderRadius: 6, outline: 'none', boxSizing: 'border-box' as const }} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label style={{ display: 'block', fontSize: 11, color: '#6b6a64', marginBottom: 3 }}>Value</label>
+                  <input value={newVarValue} onChange={e => setNewVarValue(e.target.value)} placeholder="Optional"
+                    style={{ width: '100%', padding: '6px 8px', fontSize: 12, border: '0.5px solid rgba(0,0,0,0.2)', borderRadius: 6, outline: 'none', boxSizing: 'border-box' as const }} />
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button onClick={addVar} disabled={addingVar || !newVarTag.trim() || !newVarName.trim()}
+                  style={{ height: 28, padding: '0 14px', fontSize: 12, background: '#185FA5', border: 'none', borderRadius: 6, color: '#fff', cursor: 'pointer', opacity: !newVarTag.trim() || !newVarName.trim() ? 0.5 : 1 }}>
+                  {addingVar ? 'Adding…' : 'Add'}
+                </button>
+                <button onClick={() => setShowAddVar(false)}
+                  style={{ height: 28, padding: '0 10px', fontSize: 12, background: 'transparent', border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 6, cursor: 'pointer', color: '#6b6a64' }}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* New project modal */}
       {showNewProject && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 20 }}

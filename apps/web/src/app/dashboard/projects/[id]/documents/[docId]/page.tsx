@@ -20,7 +20,7 @@ import Color from '@tiptap/extension-color'
 import Image from '@tiptap/extension-image'
 import TextStyle from '@tiptap/extension-text-style'
 import { TableOfContents, getHierarchicalIndexes } from '@tiptap/extension-table-of-contents'
-import { VariableNode, RiskMatrixNode, VARIABLE_STYLES, setProjectVariables, resolveVariablesInContent } from '@/lib/variable-node'
+import { VariableNode, RiskMatrixNode, VARIABLE_STYLES, setProjectVariables, mergeCompanyVariables, resolveVariablesInContent } from '@/lib/variable-node'
 
 // ── CommentMark — invisible anchor stored in doc JSON ─────────────────────────
 // Renders as a highlighted span with data-comment-id attribute
@@ -498,7 +498,7 @@ function Toolbar({ editor, sizes, onSizeChange, showOutline, onToggleOutline, on
           e.target.value = ''
         }} style={{ height: 28, padding: '0 6px', fontSize: 12, border: '0.5px solid rgba(78,140,140,0.3)', borderRadius: 5, background: 'rgba(78,140,140,0.06)', cursor: 'pointer', color: '#2e5f5f', maxWidth: 130 }}>
           <option value="">+ Variable</option>
-          {variables.filter(v => v.value).map((v: any) => (
+          {variables.map((v: any) => (
             <option key={v.tag} value={v.tag}>{v.name}</option>
           ))}
         </select>
@@ -902,6 +902,7 @@ export default function DocumentEditorPage() {
   const [tocItems, setTocItems] = useState<TocItem[]>([])
   const [members, setMembers] = useState<Member[]>([])
   const [variables, setVariables] = useState<any[]>([])
+  const [companyVars, setCompanyVars] = useState<any[]>([])
 
   // Comments state
   const [comments, setComments] = useState<Comment[]>([])
@@ -971,6 +972,17 @@ export default function DocumentEditorPage() {
       if (data?.variables) {
         setVariables(data.variables)
         setProjectVariables(data.variables)
+        // Also fetch company variables and merge (project vars take priority)
+        if (data?.project?.company_id) {
+          fetch(`/api/companies/${data.project.company_id}/variables`)
+            .then(r => r.ok ? r.json() : [])
+            .then(cvars => {
+              mergeCompanyVariables(cvars)
+              setCompanyVars(cvars)
+              // Force variable chips to re-render with company values
+              setVariables(prev => [...prev])
+            })
+        }
       }
     })
   }, [projectId])
@@ -1550,7 +1562,7 @@ export default function DocumentEditorPage() {
         {/* Left — editable */}
         <div style={{ width: showReference ? `${leftWidth}%` : '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden', flexShrink: 0 }}>
           {!(isClient && isApproved) && (
-            <Toolbar editor={editor} sizes={sizes} onSizeChange={(k, v) => setSizes(p => ({ ...p, [k]: v }))} showOutline={showOutline} onToggleOutline={() => setShowOutline(v => !v)} onInsertToc={insertToc} variables={variables} onInsertImage={() => insertImage(editor)} zoom={zoom} onZoomChange={setZoom} />
+            <Toolbar editor={editor} sizes={sizes} onSizeChange={(k, v) => setSizes(p => ({ ...p, [k]: v }))} showOutline={showOutline} onToggleOutline={() => setShowOutline(v => !v)} onInsertToc={insertToc} variables={[...companyVars.map((v:any) => ({...v, name: v.name})), ...variables].filter((v,i,arr) => arr.findIndex(x => x.tag === v.tag) === i)} onInsertImage={() => insertImage(editor)} zoom={zoom} onZoomChange={setZoom} />
           )}
           <div style={{ flex: 1, overflow: 'hidden', display: 'flex' }}>
             {showOutline && <OutlinePanel items={tocItems} onClose={() => setShowOutline(false)} />}

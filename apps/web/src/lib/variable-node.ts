@@ -165,6 +165,34 @@ export function setProjectVariables(variables: ProjectVariable[]) {
   window.__projectVariables = map
 }
 
+// Merge company variables into the existing map (project vars take priority)
+export function mergeCompanyVariables(variables: { tag: string; value: string }[]) {
+  if (typeof window === 'undefined') return
+  const existing = window.__projectVariables || {}
+  const merged: Record<string, { value: string; type: string }> = {}
+  // Company vars first (lower priority)
+  for (const v of variables) {
+    if (v.value) merged[v.tag] = { value: v.value, type: 'text' }
+  }
+  // Add legacy $manufacturer_* aliases pointing to $company_* values
+  const aliases: Record<string, string> = {
+    '$manufacturer_name':    '$company_name',
+    '$manufacturer_address': '$company_address',
+    '$manufacturer_contact': '$company_contact',
+    '$manufacturer_email':   '$company_email',
+  }
+  for (const [oldTag, newTag] of Object.entries(aliases)) {
+    if (merged[newTag] && !merged[oldTag]) {
+      merged[oldTag] = merged[newTag]
+    }
+  }
+  // Project vars override company vars
+  for (const [tag, entry] of Object.entries(existing)) {
+    merged[tag] = entry
+  }
+  window.__projectVariables = merged
+}
+
 // Convert TipTap JSON to simple HTML for display inside variable block
 export function richJsonToHtml(doc: any): string {
   if (!doc || !doc.content) return ''
