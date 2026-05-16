@@ -18,12 +18,19 @@ const DOC_STATUS: Record<string, { bg: string; color: string; border: string; la
 }
 
 interface Folder { id: string; level: number; parent_id: string | null; name: string; position: number; company_id: string | null }
-interface Document {
+interface EqmsDocument {
   id: string; title: string; code: string | null; status: string
   version_major: number; version_minor: number; version_status: string
   created_by_name: string; updated_at: string; current_version_id: string
   _active_version?: { id: string; version_major: number; version_minor: number }
 }
+interface EqmsRecord {
+  id: string; title: string; code: string | null; status: string
+  version_major: number; version_minor: number; version_status: string
+  created_by_name: string; updated_at: string; current_version_id: string
+  template_title: string | null; template_code: string | null
+}
+interface RecordTemplate { id: string; title: string; code: string | null; version_major: number; version_minor: number }
 
 function buildTree(folders: Folder[], parentId: string | null = null): (Folder & { children: any[] })[] {
   return folders
@@ -100,13 +107,16 @@ export default function CompanyEqmsLevelPage() {
   const companyId = params.id as string
   const level = Number(params.level)
   const meta = LEVEL_META[level]
+  const isLevel5 = level === 5
 
   const [company, setCompany] = useState<any>(null)
   const [folders, setFolders] = useState<Folder[]>([])
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null)
-  const [documents, setDocuments] = useState<Document[]>([])
+  const [documents, setDocuments] = useState<EqmsDocument[]>([])
+  const [records, setRecords] = useState<EqmsRecord[]>([])
   const [loadingFolders, setLoadingFolders] = useState(true)
   const [loadingDocs, setLoadingDocs] = useState(false)
+  const [loadingRecords, setLoadingRecords] = useState(false)
   const [sessionRole, setSessionRole] = useState('')
 
   // Folder add
@@ -114,16 +124,25 @@ export default function CompanyEqmsLevelPage() {
   const [newFolderName, setNewFolderName] = useState('')
   const newFolderRef = useRef<HTMLInputElement>(null)
 
-  // New document modal
+  // New document modal (levels 1-4)
   const [showNewDoc, setShowNewDoc] = useState(false)
   const [newDocTitle, setNewDocTitle] = useState('')
   const [newDocCode, setNewDocCode] = useState('')
   const [savingDoc, setSavingDoc] = useState(false)
-  const [templates, setTemplates] = useState<{id:string;name:string}[]>([])
+  const [templates, setTemplates] = useState<{ id: string; name: string }[]>([])
   const [templateId, setTemplateId] = useState('')
   const [loadingTemplates, setLoadingTemplates] = useState(false)
 
-  const canEdit = ['admin', 'consultant'].includes(sessionRole)
+  // New record modal (level 5)
+  const [showNewRecord, setShowNewRecord] = useState(false)
+  const [newRecordTitle, setNewRecordTitle] = useState('')
+  const [newRecordCode, setNewRecordCode] = useState('')
+  const [savingRecord, setSavingRecord] = useState(false)
+  const [recordTemplates, setRecordTemplates] = useState<RecordTemplate[]>([])
+  const [recordTemplateId, setRecordTemplateId] = useState('')
+  const [loadingRecordTemplates, setLoadingRecordTemplates] = useState(false)
+
+  const canEdit = ['admin', 'consultant', 'client', 'client-MR'].includes(sessionRole)
 
   useEffect(() => {
     fetch('/api/auth/session').then(r => r.json()).then(d => setSessionRole(d?.user?.role || ''))
@@ -140,9 +159,10 @@ export default function CompanyEqmsLevelPage() {
   }, [addingFolder])
 
   useEffect(() => {
-    if (selectedFolder) loadDocuments(selectedFolder)
-    else setDocuments([])
-  }, [selectedFolder])
+    if (!selectedFolder) { setDocuments([]); setRecords([]); return }
+    if (isLevel5) loadRecords(selectedFolder)
+    else loadDocuments(selectedFolder)
+  }, [selectedFolder, level])
 
   async function loadFolders() {
     setLoadingFolders(true)
@@ -161,6 +181,13 @@ export default function CompanyEqmsLevelPage() {
     const res = await fetch(`/api/eqms/documents?folder_id=${folderId}&company_id=${companyId}`)
     if (res.ok) setDocuments(await res.json())
     setLoadingDocs(false)
+  }
+
+  async function loadRecords(folderId: string) {
+    setLoadingRecords(true)
+    const res = await fetch(`/api/eqms/records?folder_id=${folderId}&company_id=${companyId}`)
+    if (res.ok) setRecords(await res.json())
+    setLoadingRecords(false)
   }
 
   async function createFolder(parentId: string, name: string) {
@@ -202,7 +229,6 @@ export default function CompanyEqmsLevelPage() {
   async function createDocument() {
     if (!newDocTitle.trim() || !selectedFolder) return
     setSavingDoc(true)
-    // Fetch template content if selected
     let templateContent = null
     if (templateId) {
       const tr = await fetch(`/api/qms-templates/${templateId}`)
@@ -211,23 +237,34 @@ export default function CompanyEqmsLevelPage() {
     const res = await fetch('/api/eqms/documents', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        folder_id: selectedFolder,
-        level,
-        title: newDocTitle.trim(),
-        code: newDocCode.trim() || null,
-        company_id: companyId,
-        template_content: templateContent,
+        folder_id: selectedFolder, level, title: newDocTitle.trim(),
+        code: newDocCode.trim() || null, company_id: companyId, template_content: templateContent,
       }),
     })
     if (res.ok) {
       const doc = await res.json()
-      setShowNewDoc(false)
-      setNewDocTitle('')
-      setNewDocCode('')
-      // Navigate directly to the editor
+      setShowNewDoc(false); setNewDocTitle(''); setNewDocCode('')
       router.push(`/dashboard/companies/${companyId}/documents/${doc.id}`)
     }
     setSavingDoc(false)
+  }
+
+  async function createRecord() {
+    if (!newRecordTitle.trim() || !selectedFolder || !recordTemplateId) return
+    setSavingRecord(true)
+    const res = await fetch('/api/eqms/records', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        folder_id: selectedFolder, template_id: recordTemplateId,
+        title: newRecordTitle.trim(), code: newRecordCode.trim() || null, company_id: companyId,
+      }),
+    })
+    if (res.ok) {
+      const rec = await res.json()
+      setShowNewRecord(false); setNewRecordTitle(''); setNewRecordCode(''); setRecordTemplateId('')
+      router.push(`/dashboard/companies/${companyId}/documents/${rec.id}`)
+    }
+    setSavingRecord(false)
   }
 
   async function deleteDocument(docId: string, title: string) {
@@ -295,117 +332,231 @@ export default function CompanyEqmsLevelPage() {
           </div>
         </div>
 
-        {/* Document list */}
+        {/* Document / Record list */}
         <div style={{ background: '#fff', border: '0.5px solid rgba(0,0,0,0.1)', borderRadius: 12, overflow: 'hidden' }}>
           <div style={{ padding: '11px 16px', borderBottom: '0.5px solid rgba(0,0,0,0.08)', background: '#f8f7f4', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div>
               <div style={{ fontSize: 14, fontWeight: 500 }}>{selectedFolderName || 'Select a folder'}</div>
               <div style={{ fontSize: 12, color: '#6b6a64', marginTop: 1 }}>
-                {selectedFolder ? `${documents.length} document${documents.length !== 1 ? 's' : ''}` : 'No folder selected'}
+                {selectedFolder
+                  ? isLevel5
+                    ? `${records.length} record${records.length !== 1 ? 's' : ''}`
+                    : `${documents.length} document${documents.length !== 1 ? 's' : ''}`
+                  : 'No folder selected'}
               </div>
             </div>
             {canEdit && selectedFolder && (
-              <button onClick={() => {
+              isLevel5 ? (
+                <button onClick={() => {
+                  setShowNewRecord(true)
+                  setRecordTemplateId('')
+                  setLoadingRecordTemplates(true)
+                  fetch(`/api/eqms/records/templates?company_id=${companyId}`)
+                    .then(r => r.ok ? r.json() : [])
+                    .then(data => { setRecordTemplates(data); setLoadingRecordTemplates(false) })
+                }} style={{ height: 30, padding: '0 14px', fontSize: 12, background: '#5F5E5A', border: 'none', borderRadius: 8, color: '#fff', cursor: 'pointer' }}>
+                  + Create record
+                </button>
+              ) : (
+                <button onClick={() => {
                   setShowNewDoc(true)
                   setTemplateId('')
                   setLoadingTemplates(true)
                   fetch(`/api/qms-templates?level=${level}`)
                     .then(r => r.ok ? r.json() : [])
                     .then(data => { setTemplates(data); setLoadingTemplates(false) })
-                }}
-                style={{ height: 30, padding: '0 14px', fontSize: 12, background: '#185FA5', border: 'none', borderRadius: 8, color: '#fff', cursor: 'pointer' }}>
-                + New document
-              </button>
+                }} style={{ height: 30, padding: '0 14px', fontSize: 12, background: '#185FA5', border: 'none', borderRadius: 8, color: '#fff', cursor: 'pointer' }}>
+                  + New document
+                </button>
+              )
             )}
           </div>
 
           {!selectedFolder ? (
             <div style={{ padding: 40, textAlign: 'center', color: '#9b9991', fontSize: 13 }}>Select a folder from the left.</div>
+          ) : isLevel5 ? (
+            loadingRecords ? (
+              <div style={{ padding: 40, textAlign: 'center', color: '#9b9991', fontSize: 13 }}>Loading…</div>
+            ) : records.length === 0 ? (
+              <div style={{ padding: 40, textAlign: 'center', color: '#9b9991', fontSize: 13 }}>
+                No records in this folder.{canEdit ? ' Click "+ Create record" to add one.' : ''}
+              </div>
+            ) : (
+              <div>
+                {records.map((rec, i) => (
+                  <div key={rec.id} style={{ padding: '12px 16px', borderBottom: i < records.length - 1 ? '0.5px solid rgba(0,0,0,0.06)' : 'none', display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <div style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: rec.version_status === 'active' ? '#3B6D11' : rec.version_status === 'pending' ? '#c8a96e' : '#9b9991' }} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 500 }}>{rec.title}</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                        {rec.code && <span style={{ fontSize: 11, color: '#9b9991', fontFamily: 'monospace' }}>{rec.code}</span>}
+                        {rec.template_title && <span style={{ fontSize: 10, color: '#8a96a2' }}>from {rec.template_title}</span>}
+                        <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 3,
+                          background: rec.version_status === 'active' ? '#EAF3DE' : rec.version_status === 'pending' ? '#FFFBCC' : '#F1EFE8',
+                          color: rec.version_status === 'active' ? '#27500A' : rec.version_status === 'pending' ? '#7A6500' : '#5F5E5A',
+                          border: `0.5px solid ${rec.version_status === 'active' ? '#97C459' : rec.version_status === 'pending' ? '#F5E24A' : '#D3D1C7'}` }}>
+                          {rec.version_status === 'active' ? 'Active' : rec.version_status === 'pending' ? 'Pending' : 'Draft'} v{rec.version_major}.{rec.version_minor}
+                        </span>
+                        <span style={{ fontSize: 10, color: '#9b9991' }}>· {rec.created_by_name}</span>
+                      </div>
+                    </div>
+                    <Link href={`/dashboard/companies/${companyId}/documents/${rec.id}`}
+                      style={{ height: 28, padding: '0 12px', fontSize: 12, background: '#F1EFE8', border: '0.5px solid #D3D1C7', borderRadius: 6, color: '#5F5E5A', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', flexShrink: 0 }}>
+                      Open
+                    </Link>
+                  </div>
+                ))}
+              </div>
+            )
           ) : loadingDocs ? (
             <div style={{ padding: 40, textAlign: 'center', color: '#9b9991', fontSize: 13 }}>Loading…</div>
           ) : documents.length === 0 ? (
             <div style={{ padding: 40, textAlign: 'center', color: '#9b9991', fontSize: 13 }}>
               No documents in this folder.{canEdit ? ' Click "+ New document" to add one.' : ''}
             </div>
-          ) : documents.map((doc, i) => {
-            const isActive = doc.version_status === 'active'
-            const isDraft = doc.version_status === 'draft'
-            const isPending = doc.version_status === 'pending'
-            const versionLabel = `v${doc.version_major}.${doc.version_minor}`
-            const av = doc._active_version
-            // Active info: either this row IS active, or companion from _active_version
-            const activeVer = isActive ? { id: doc.id, maj: doc.version_major, min: doc.version_minor } : av ? { id: doc.id, maj: av.version_major, min: av.version_minor } : null
-            const hasDraft = isDraft || isPending
-            return (
-              <div key={doc.current_version_id} style={{ borderBottom: i < documents.length - 1 ? '0.5px solid rgba(0,0,0,0.06)' : 'none' }}>
-                {/* Column headers - only on first row */}
-                {i === 0 && (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', padding: '6px 16px 4px', gap: 0, borderBottom: '0.5px solid rgba(0,0,0,0.05)' }}>
-                    <div style={{ fontSize: 10, fontWeight: 600, color: '#9b9991', textTransform: 'uppercase' as const, letterSpacing: '0.06em' }}>Active</div>
-                    <div style={{ fontSize: 10, fontWeight: 600, color: '#9b9991', textTransform: 'uppercase' as const, letterSpacing: '0.06em', paddingLeft: 12, borderLeft: '0.5px solid rgba(0,0,0,0.06)' }}>Draft / Pending</div>
-                  </div>
-                )}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', minHeight: 56 }}>
-                  {/* LEFT: Active column */}
-                  <div style={{ padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 10, borderRight: '0.5px solid rgba(0,0,0,0.06)' }}>
-                    {activeVer ? (
-                      <>
-                        <div style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: '#3B6D11' }} />
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 2 }}>{doc.title}</div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                            {doc.code && <span style={{ fontSize: 11, color: '#9b9991', fontFamily: 'monospace' }}>{doc.code}</span>}
-                            <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 3, background: '#EAF3DE', color: '#27500A', border: '0.5px solid #97C459' }}>Active v{activeVer.maj}.{activeVer.min}</span>
-                            <span style={{ fontSize: 10, color: '#9b9991' }}>· {doc.created_by_name}</span>
-                          </div>
-                        </div>
-                        <Link href={`/dashboard/companies/${companyId}/documents/${doc.id}`}
-                          style={{ height: 28, padding: '0 12px', fontSize: 12, background: '#EAF3DE', border: '0.5px solid #97C459', borderRadius: 6, color: '#27500A', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', flexShrink: 0 }}>
-                          View
-                        </Link>
-                      </>
-                    ) : (
-                      <div style={{ fontSize: 12, color: '#ccc', fontStyle: 'italic' }}>—</div>
+          ) : (
+            <div>
+              {documents.map((doc, i) => {
+                const isActive = doc.version_status === 'active'
+                const isDraft = doc.version_status === 'draft'
+                const isPending = doc.version_status === 'pending'
+                const versionLabel = `v${doc.version_major}.${doc.version_minor}`
+                const av = doc._active_version
+                const activeVer = isActive ? { id: doc.id, maj: doc.version_major, min: doc.version_minor } : av ? { id: doc.id, maj: av.version_major, min: av.version_minor } : null
+                const hasDraft = isDraft || isPending
+                return (
+                  <div key={doc.current_version_id} style={{ borderBottom: i < documents.length - 1 ? '0.5px solid rgba(0,0,0,0.06)' : 'none' }}>
+                    {i === 0 && (
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', padding: '6px 16px 4px', gap: 0, borderBottom: '0.5px solid rgba(0,0,0,0.05)' }}>
+                        <div style={{ fontSize: 10, fontWeight: 600, color: '#9b9991', textTransform: 'uppercase' as const, letterSpacing: '0.06em' }}>Active</div>
+                        <div style={{ fontSize: 10, fontWeight: 600, color: '#9b9991', textTransform: 'uppercase' as const, letterSpacing: '0.06em', paddingLeft: 12, borderLeft: '0.5px solid rgba(0,0,0,0.06)' }}>Draft / Pending</div>
+                      </div>
                     )}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', minHeight: 56 }}>
+                      <div style={{ padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 10, borderRight: '0.5px solid rgba(0,0,0,0.06)' }}>
+                        {activeVer ? (
+                          <>
+                            <div style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: '#3B6D11' }} />
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 2 }}>{doc.title}</div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                {doc.code && <span style={{ fontSize: 11, color: '#9b9991', fontFamily: 'monospace' }}>{doc.code}</span>}
+                                <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 3, background: '#EAF3DE', color: '#27500A', border: '0.5px solid #97C459' }}>Active v{activeVer.maj}.{activeVer.min}</span>
+                                <span style={{ fontSize: 10, color: '#9b9991' }}>· {doc.created_by_name}</span>
+                              </div>
+                            </div>
+                            <Link href={`/dashboard/companies/${companyId}/documents/${doc.id}`}
+                              style={{ height: 28, padding: '0 12px', fontSize: 12, background: '#EAF3DE', border: '0.5px solid #97C459', borderRadius: 6, color: '#27500A', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', flexShrink: 0 }}>
+                              View
+                            </Link>
+                          </>
+                        ) : (
+                          <div style={{ fontSize: 12, color: '#ccc', fontStyle: 'italic' }}>—</div>
+                        )}
+                      </div>
+                      <div style={{ padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 10 }}>
+                        {hasDraft ? (
+                          <>
+                            <div style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: isPending ? '#c8a96e' : '#9b9991' }} />
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              {!activeVer && <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 2 }}>{doc.title}</div>}
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                {!activeVer && doc.code && <span style={{ fontSize: 11, color: '#9b9991', fontFamily: 'monospace' }}>{doc.code}</span>}
+                                <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 3, background: isPending ? '#FFFBCC' : '#F1EFE8', color: isPending ? '#7A6500' : '#5F5E5A', border: `0.5px solid ${isPending ? '#F5E24A' : '#D3D1C7'}` }}>{isPending ? 'Pending' : 'Draft'} {versionLabel}</span>
+                                {!activeVer && <span style={{ fontSize: 10, color: '#9b9991' }}>· {doc.created_by_name}</span>}
+                              </div>
+                            </div>
+                            <div style={{ display: 'flex', gap: 5, flexShrink: 0 }}>
+                              <Link href={`/dashboard/companies/${companyId}/documents/${doc.id}`}
+                                style={{ height: 28, padding: '0 12px', fontSize: 12, background: '#E6F1FB', border: '0.5px solid #85B7EB', borderRadius: 6, color: '#185FA5', textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>
+                                Open
+                              </Link>
+                              {canEdit && (
+                                <button onClick={() => deleteDocument(doc.id, doc.title)}
+                                  style={{ height: 28, padding: '0 8px', fontSize: 12, background: '#FCEBEB', border: '0.5px solid #F09595', borderRadius: 6, color: '#A32D2D', cursor: 'pointer' }}>
+                                  Delete
+                                </button>
+                              )}
+                            </div>
+                          </>
+                        ) : (
+                          <div style={{ fontSize: 12, color: '#ccc', fontStyle: 'italic' }}>—</div>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                  {/* RIGHT: Draft/Pending column */}
-                  <div style={{ padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 10 }}>
-                    {hasDraft ? (
-                      <>
-                        <div style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: isPending ? '#c8a96e' : '#9b9991' }} />
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          {!activeVer && <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 2 }}>{doc.title}</div>}
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                            {!activeVer && doc.code && <span style={{ fontSize: 11, color: '#9b9991', fontFamily: 'monospace' }}>{doc.code}</span>}
-                            <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 3, background: isPending ? '#FFFBCC' : '#F1EFE8', color: isPending ? '#7A6500' : '#5F5E5A', border: `0.5px solid ${isPending ? '#F5E24A' : '#D3D1C7'}` }}>{isPending ? 'Pending' : 'Draft'} {versionLabel}</span>
-                            {!activeVer && <span style={{ fontSize: 10, color: '#9b9991' }}>· {doc.created_by_name}</span>}
-                          </div>
-                        </div>
-                        <div style={{ display: 'flex', gap: 5, flexShrink: 0 }}>
-                          <Link href={`/dashboard/companies/${companyId}/documents/${doc.id}`}
-                            style={{ height: 28, padding: '0 12px', fontSize: 12, background: '#E6F1FB', border: '0.5px solid #85B7EB', borderRadius: 6, color: '#185FA5', textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>
-                            Open
-                          </Link>
-                          {canEdit && (
-                            <button onClick={() => deleteDocument(doc.id, doc.title)}
-                              style={{ height: 28, padding: '0 8px', fontSize: 12, background: '#FCEBEB', border: '0.5px solid #F09595', borderRadius: 6, color: '#A32D2D', cursor: 'pointer' }}>
-                              Delete
-                            </button>
-                          )}
-                        </div>
-                      </>
-                    ) : (
-                      <div style={{ fontSize: 12, color: '#ccc', fontStyle: 'italic' }}>—</div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )
-          })}
+                )
+              })}
+            </div>
+          )}
         </div>
       </div>
 
-      {/* New document modal */}
+      {/* New record modal — Level 5 */}
+      {showNewRecord && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: 20 }}
+          onClick={() => setShowNewRecord(false)}>
+          <div style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 460, border: '0.5px solid rgba(0,0,0,0.12)', overflow: 'hidden', boxShadow: '0 8px 32px rgba(0,0,0,0.12)' }}
+            onClick={e => e.stopPropagation()}>
+            <div style={{ padding: '14px 20px', borderBottom: '0.5px solid rgba(0,0,0,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 500 }}>Create record</div>
+                <div style={{ fontSize: 11, color: '#9b9991', marginTop: 2 }}>in {selectedFolderName} · Records</div>
+              </div>
+              <button onClick={() => setShowNewRecord(false)} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#5a6472' }}>×</button>
+            </div>
+            <div style={{ padding: 20, display: 'flex', flexDirection: 'column' as const, gap: 12 }}>
+              <div>
+                <label style={{ display: 'block', fontSize: 12, color: '#5a6472', marginBottom: 4 }}>Record title *</label>
+                <input value={newRecordTitle} onChange={e => setNewRecordTitle(e.target.value)}
+                  placeholder="e.g. Training Record — John Smith" autoFocus
+                  onKeyDown={e => { if (e.key === 'Enter' && recordTemplateId) createRecord() }}
+                  style={{ width: '100%', padding: '8px 10px', fontSize: 13, border: '0.5px solid rgba(0,0,0,0.18)', borderRadius: 8, outline: 'none', boxSizing: 'border-box' as const }} />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 12, color: '#5a6472', marginBottom: 4 }}>Record code</label>
+                <input value={newRecordCode} onChange={e => setNewRecordCode(e.target.value)} placeholder="e.g. REC-001"
+                  style={{ width: '100%', padding: '8px 10px', fontSize: 13, border: '0.5px solid rgba(0,0,0,0.18)', borderRadius: 8, outline: 'none', fontFamily: 'monospace', boxSizing: 'border-box' as const }} />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 12, color: '#5a6472', marginBottom: 6 }}>Select Level 4 template *</label>
+                {loadingRecordTemplates ? (
+                  <div style={{ fontSize: 12, color: '#9b9991' }}>Loading templates…</div>
+                ) : recordTemplates.length === 0 ? (
+                  <div style={{ fontSize: 12, color: '#9b9991', padding: '10px 12px', background: '#f8f7f4', borderRadius: 8, border: '0.5px solid rgba(0,0,0,0.1)' }}>
+                    No approved Level 4 templates found for this company.<br />
+                    <span style={{ fontSize: 11 }}>Create and approve a Forms &amp; Templates document first.</span>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 5, maxHeight: 200, overflowY: 'auto' as const }}>
+                    {recordTemplates.map(t => (
+                      <label key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 8, border: `0.5px solid ${recordTemplateId === t.id ? '#D3D1C7' : 'rgba(0,0,0,0.1)'}`, background: recordTemplateId === t.id ? '#F1EFE8' : '#faf9f7', cursor: 'pointer' }}>
+                        <input type="radio" name="rec_tpl" value={t.id} checked={recordTemplateId === t.id} onChange={() => setRecordTemplateId(t.id)} />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 12, fontWeight: 500, color: recordTemplateId === t.id ? '#5F5E5A' : '#1a1f24' }}>{t.title}</div>
+                          <div style={{ fontSize: 10, color: '#9b9991', marginTop: 1 }}>
+                            {t.code && <span style={{ fontFamily: 'monospace', marginRight: 6 }}>{t.code}</span>}
+                            v{t.version_major}.{t.version_minor}
+                          </div>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+            <div style={{ padding: '12px 20px', borderTop: '0.5px solid rgba(0,0,0,0.08)', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button onClick={() => setShowNewRecord(false)} style={{ height: 32, padding: '0 14px', fontSize: 13, background: 'transparent', border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 8, cursor: 'pointer', color: '#5a6472' }}>Cancel</button>
+              <button onClick={createRecord} disabled={savingRecord || !newRecordTitle.trim() || !recordTemplateId}
+                style={{ height: 32, padding: '0 14px', fontSize: 13, background: !newRecordTitle.trim() || !recordTemplateId ? '#ccc' : '#5F5E5A', border: 'none', borderRadius: 8, color: '#fff', cursor: !newRecordTitle.trim() || !recordTemplateId ? 'not-allowed' : 'pointer' }}>
+                {savingRecord ? 'Creating…' : 'Create record'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* New document modal — Levels 1-4 */}
       {showNewDoc && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: 20 }}
           onClick={() => setShowNewDoc(false)}>
@@ -418,10 +569,11 @@ export default function CompanyEqmsLevelPage() {
               </div>
               <button onClick={() => setShowNewDoc(false)} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#5a6472' }}>×</button>
             </div>
-            <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{ padding: 20, display: 'flex', flexDirection: 'column' as const, gap: 12 }}>
               <div>
                 <label style={{ display: 'block', fontSize: 12, color: '#5a6472', marginBottom: 4 }}>Document title *</label>
-                <input value={newDocTitle} onChange={e => setNewDocTitle(e.target.value)} placeholder="e.g. Quality Management Policy" autoFocus
+                <input value={newDocTitle} onChange={e => setNewDocTitle(e.target.value)}
+                  placeholder="e.g. Quality Management Policy" autoFocus
                   onKeyDown={e => { if (e.key === 'Enter') createDocument() }}
                   style={{ width: '100%', padding: '8px 10px', fontSize: 13, border: '0.5px solid rgba(0,0,0,0.18)', borderRadius: 8, outline: 'none', boxSizing: 'border-box' as const }} />
               </div>
@@ -431,13 +583,13 @@ export default function CompanyEqmsLevelPage() {
                   style={{ width: '100%', padding: '8px 10px', fontSize: 13, border: '0.5px solid rgba(0,0,0,0.18)', borderRadius: 8, outline: 'none', fontFamily: 'monospace', boxSizing: 'border-box' as const }} />
               </div>
               <div>
-                <label style={{ display: 'block', fontSize: 12, color: '#5a6472', marginBottom: 4 }}>Use template <span style={{color:'#9b9991',fontWeight:400}}>(optional)</span></label>
+                <label style={{ display: 'block', fontSize: 12, color: '#5a6472', marginBottom: 4 }}>Use template <span style={{ color: '#9b9991', fontWeight: 400 }}>(optional)</span></label>
                 {loadingTemplates ? (
                   <div style={{ fontSize: 12, color: '#9b9991' }}>Loading templates...</div>
                 ) : templates.length === 0 ? (
                   <div style={{ fontSize: 12, color: '#9b9991', padding: '8px 10px', background: '#f8f7f4', borderRadius: 6 }}>No templates for this level.</div>
                 ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 5, maxHeight: 160, overflowY: 'auto' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 5, maxHeight: 160, overflowY: 'auto' as const }}>
                     <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderRadius: 6, border: `0.5px solid ${templateId === '' ? meta.border : 'rgba(0,0,0,0.12)'}`, background: templateId === '' ? meta.bg : '#faf9f7', cursor: 'pointer' }}>
                       <input type="radio" name="tpl" value="" checked={templateId === ''} onChange={() => setTemplateId('')} />
                       <span style={{ fontSize: 12, fontWeight: 500, color: templateId === '' ? meta.color : '#1a1f24' }}>Blank document</span>

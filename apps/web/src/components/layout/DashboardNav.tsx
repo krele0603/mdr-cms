@@ -426,7 +426,7 @@ export default function DashboardNav({ user }: Props) {
               {selectedCompanyId && (
                 <>
                   <div style={{ fontSize: 10, fontWeight: 600, color: 'rgba(255,255,255,0.25)', letterSpacing: '0.08em', textTransform: 'uppercase' as const, padding: '4px 12px 6px' }}>eQMS</div>
-                  {[{label:'Policies',level:1},{label:'Procedures',level:2},{label:'Work Instructions',level:3},{label:'Forms & Templates',level:4}].map(({label,level}) => {
+                  {[{label:'Policies',level:1},{label:'Procedures',level:2},{label:'Work Instructions',level:3},{label:'Forms & Templates',level:4},{label:'Records',level:5}].map(({label,level}) => {
                     const href = `/dashboard/companies/${selectedCompanyId}/eqms/${level}`
                     const active = pathname.startsWith(href)
                     return (
@@ -435,12 +435,6 @@ export default function DashboardNav({ user }: Props) {
                       </a>
                     )
                   })}
-                  {/* QMS Implementation placeholder */}
-                  <div style={{ fontSize: 10, fontWeight: 600, color: 'rgba(255,255,255,0.25)', letterSpacing: '0.08em', textTransform: 'uppercase' as const, padding: '10px 12px 6px' }}>QMS Implementation</div>
-                  <div style={{ padding: '4px 12px 8px', display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <svg width='13' height='13' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='1.5' strokeLinecap='round' style={{opacity:0.3}}><circle cx='12' cy='12' r='10'/><line x1='12' y1='8' x2='12' y2='12'/><line x1='12' y1='16' x2='12.01' y2='16'/></svg>
-                    <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.3)', fontStyle: 'italic' }}>Coming soon</span>
-                  </div>
                   {(() => {
                     const companyName = clientCompanies.find(c => c.id === selectedCompanyId)?.name
                     const compProjects = clientProjects.filter((p:any) => p.company_name === companyName)
