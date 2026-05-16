@@ -756,7 +756,7 @@ export default function QmsTemplatesPage() {
               <div style={{ width: 36, height: 36, borderRadius: 8, background: lv.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0 }}>📄</div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 600, color: '#1a1f24', marginBottom: 2 }}>{t.name}</div>
-                <div style={{ fontSize: 11, color: '#8a96a2' }}>Updated {new Date(t.updated_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</div>
+                <div style={{ fontSize: 11, color: '#8a96a2' }}>Updated {new Date(t.updated_at || t.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</div>
               </div>
               {isAdminOrConsultant && (
                 <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>

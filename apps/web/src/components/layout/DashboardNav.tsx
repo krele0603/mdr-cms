@@ -426,6 +426,12 @@ export default function DashboardNav({ user }: Props) {
               {selectedCompanyId && (
                 <>
                   <div style={{ fontSize: 10, fontWeight: 600, color: 'rgba(255,255,255,0.25)', letterSpacing: '0.08em', textTransform: 'uppercase' as const, padding: '4px 12px 6px' }}>eQMS</div>
+                  {user.role === 'client-MR' && (
+                    <a href={`/dashboard/companies/${selectedCompanyId}/eqms/doclist`}
+                      style={{ display:'flex', alignItems:'center', gap:9, padding:'7px 12px', borderRadius:8, fontSize:13, color: pathname.includes('doclist') ? '#4e8c8c' : 'rgba(255,255,255,0.55)', background: pathname.includes('doclist') ? 'rgba(78,140,140,0.15)' : 'transparent', textDecoration:'none', marginBottom:2 }}>
+                      <span style={{fontSize:11,opacity:0.5}}>📋</span>Document list
+                    </a>
+                  )}
                   {[{label:'Policies',level:1},{label:'Procedures',level:2},{label:'Work Instructions',level:3},{label:'Forms & Templates',level:4},{label:'Records',level:5}].map(({label,level}) => {
                     const href = `/dashboard/companies/${selectedCompanyId}/eqms/${level}`
                     const active = pathname.startsWith(href)

@@ -317,7 +317,14 @@ export default function CompanyPage() {
       {/* eQMS Levels */}
       {company?.modules?.eqms !== false && (
       <div style={{ marginBottom: 14 }}>
-        <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 10, color: '#1a1a18' }}>eQMS</div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+          <div style={{ fontSize: 13, fontWeight: 500, color: '#1a1a18' }}>eQMS</div>
+          {['admin', 'consultant', 'client-MR'].includes(sessionRole) && (
+            <Link href={`/dashboard/companies/${id}/eqms/doclist`} style={{ fontSize: 12, color: '#27500A', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 6, background: '#EAF3DE', border: '0.5px solid #97C459' }}>
+              📋 Document list
+            </Link>
+          )}
+        </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 10 }}>
           {LEVEL_META.map(m => (
             <Link key={m.level} href={`/dashboard/companies/${id}/eqms/${m.level}`}
