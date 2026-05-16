@@ -16,7 +16,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   }
 
   const company = await queryOne(
-    `SELECT id, name, country, contact, email, created_at FROM companies WHERE id=$1::uuid`,
+    `SELECT id, name, country, contact, email, created_at, modules FROM companies WHERE id=$1::uuid`,
     [params.id]
   )
   if (!company) return NextResponse.json({ error: 'Not found' }, { status: 404 })
@@ -66,15 +66,16 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   const session = await getSession()
   if (!session || session.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  const { name, country, contact, email } = await req.json()
+  const { name, country, contact, email, modules } = await req.json()
   const company = await queryOne(
     `UPDATE companies SET
        name    = COALESCE($1, name),
        country = COALESCE($2, country),
        contact = COALESCE($3, contact),
-       email   = COALESCE($4, email)
-     WHERE id = $5::uuid RETURNING id, name, country, contact, email`,
-    [name || null, country || null, contact || null, email || null, params.id]
+       email   = COALESCE($4, email),
+       modules = COALESCE($5, modules)
+     WHERE id = $6::uuid RETURNING id, name, country, contact, email, modules`,
+    [name || null, country || null, contact || null, email || null, modules ? JSON.stringify(modules) : null, params.id]
   )
   if (!company) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   return NextResponse.json(company)

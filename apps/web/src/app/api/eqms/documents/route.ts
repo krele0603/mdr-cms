@@ -2,6 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { query, queryOne } from '@/lib/db'
 
+// Helper: check if eqms module is enabled for a company
+async function eqmsEnabled(companyId: string): Promise<boolean> {
+  const { queryOne: q } = await import('@/lib/db')
+  const company = await q(`SELECT modules FROM companies WHERE id=$1::uuid`, [companyId])
+  return company?.modules?.eqms !== false
+}
+
 export async function GET(req: NextRequest) {
   const session = await getSession()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
