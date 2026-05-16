@@ -483,6 +483,7 @@ export default function EqmsDocumentEditor() {
   const router = useRouter()
   const companyId = params.id as string
   const docId = params.docId as string
+  const [isRecord, setIsRecord] = useState(false)
 
   const [doc, setDoc] = useState<any>(null)
   const [versions, setVersions] = useState<any[]>([])
@@ -526,10 +527,14 @@ export default function EqmsDocumentEditor() {
 
   async function loadDoc() {
     setLoading(true)
-    const [docRes, companyRes] = await Promise.all([
-      fetch(`/api/eqms/documents/${docId}`),
+    // Auto-detect: try records first, fall back to documents
+    const [recRes, companyRes] = await Promise.all([
+      fetch(`/api/eqms/records/${docId}`),
       fetch(`/api/companies/${companyId}`),
     ])
+    const isRec = recRes.ok
+    setIsRecord(isRec)
+    const docRes = isRec ? recRes : await fetch(`/api/eqms/documents/${docId}`)
     if (!docRes.ok) { router.back(); return }
     const data = await docRes.json()
     const companyData = await companyRes.json()
@@ -561,7 +566,7 @@ export default function EqmsDocumentEditor() {
   async function saveContent(content: any) {
     setSaveState('saving')
     try {
-      const res = await fetch(`/api/eqms/documents/${docId}`, {
+      const res = await fetch(isRecord ? `/api/eqms/records/${docId}` : `/api/eqms/documents/${docId}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content }),
       })
@@ -571,7 +576,7 @@ export default function EqmsDocumentEditor() {
 
   async function submitForApproval() {
     setSubmitting(true)
-    const res = await fetch(`/api/eqms/documents/${docId}/submit`, {
+    const res = await fetch(isRecord ? `/api/eqms/records/${docId}/submit` : `/api/eqms/documents/${docId}/submit`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ change_note: changeNote }),
     })
@@ -582,7 +587,7 @@ export default function EqmsDocumentEditor() {
   async function approve() {
     if (!confirm('Approve this document? The current active version will be archived.')) return
     setSubmitting(true)
-    const res = await fetch(`/api/eqms/documents/${docId}/approve`, { method: 'POST' })
+    const res = await fetch(isRecord ? `/api/eqms/records/${docId}/approve` : `/api/eqms/documents/${docId}/approve`, { method: 'POST' })
     if (res.ok) loadDoc()
     setSubmitting(false)
   }
@@ -590,7 +595,7 @@ export default function EqmsDocumentEditor() {
   async function createRevision() {
     if (!confirm('Create a new revision? The approved version will be preserved in history.')) return
     setRevising(true)
-    const res = await fetch(`/api/eqms/documents/${docId}/revise`, { method: 'POST' })
+    const res = await fetch(isRecord ? `/api/eqms/records/${docId}/revise` : `/api/eqms/documents/${docId}/revise`, { method: 'POST' })
     if (res.ok) { loadDoc() }
     else { const d = await res.json(); alert(d.error || 'Failed to create revision') }
     setRevising(false)
@@ -636,7 +641,7 @@ export default function EqmsDocumentEditor() {
           <span>›</span>
           <Link href={`/dashboard/companies/${companyId}`} style={{ color: '#9b9991', textDecoration: 'none' }}>{company?.name || '…'}</Link>
           <span>›</span>
-          {meta && <Link href={`/dashboard/companies/${companyId}/eqms/${doc.level}`} style={{ color: '#9b9991', textDecoration: 'none' }}>{meta.label}</Link>}
+          {meta && <Link href={`/dashboard/companies/${companyId}/eqms/${isRecord ? 5 : doc.level}`} style={{ color: '#9b9991', textDecoration: 'none' }}>{isRecord ? 'Records' : meta.label}</Link>}
           <span>›</span>
           <span style={{ color: '#1a1a18', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>{doc.title}</span>
         </div>
