@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSessionFromRequest } from '@/lib/auth'
-import { queryOne } from '@/lib/db'
+import { queryOne, auditLog } from '@/lib/db'
 
 type Params = { params: { id: string; docId: string } }
 
@@ -68,5 +68,16 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     vals
   )
   if (!doc) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+  if (body.status !== undefined) {
+    await auditLog(session.id, 'document', params.docId, 'status_changed', {
+      status: body.status,
+      project_id: params.id,
+    })
+  } else if (body.content !== undefined) {
+    await auditLog(session.id, 'document', params.docId, 'content_saved', {
+      project_id: params.id,
+    })
+  }
   return NextResponse.json(doc)
 }

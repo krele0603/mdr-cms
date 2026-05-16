@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { query, queryOne } from '@/lib/db'
+import { auditLog } from '@/lib/db'
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   const session = await getSession()
@@ -32,5 +33,6 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     `UPDATE eqms_documents SET current_version_id = $1::uuid, status = 'draft', updated_at = NOW() WHERE id = $2::uuid`,
     [newVersion.id, params.id]
   )
+  await auditLog(session.id, 'eqms_document', params.id, 'revised', {})
   return NextResponse.json({ ok: true })
 }

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSessionFromRequest } from '@/lib/auth'
-import { query, queryOne } from '@/lib/db'
+import { query, queryOne, auditLog } from '@/lib/db'
 
 export async function GET(req: NextRequest) {
   const session = await getSessionFromRequest(req)
@@ -73,5 +73,6 @@ export async function POST(req: NextRequest) {
       ? [email.toLowerCase().trim(), name.trim(), password_hash, role || 'client', companyIdVal]
       : [email.toLowerCase().trim(), name.trim(), password_hash, role || 'client']
   )
+  await auditLog(session.id, 'user', user.id, 'created', { name: user.name, role: user.role, email: user.email })
   return NextResponse.json(user, { status: 201 })
 }

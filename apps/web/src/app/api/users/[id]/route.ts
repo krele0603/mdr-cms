@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession, hashPassword } from '@/lib/auth'
-import { query, queryOne } from '@/lib/db'
+import { query, queryOne, auditLog } from '@/lib/db'
 
 export async function PATCH(
   req: NextRequest,
@@ -26,6 +26,7 @@ export async function PATCH(
   }
   if (company_id !== undefined)
     await query('UPDATE users SET company_id = $1::uuid, updated_at = NOW() WHERE id = $2::uuid', [company_id || null, params.id])
+  await auditLog(session.id, 'user', params.id, 'updated', { fields: Object.keys(body) })
   return NextResponse.json({ ok: true })
 }
 
@@ -78,5 +79,6 @@ export async function DELETE(
   await query('UPDATE company_members SET added_by = $2::uuid WHERE added_by = $1::uuid', [uid, session.id])
   // Delete the user
   await query('DELETE FROM users WHERE id = $1::uuid', [uid])
+  await auditLog(session.id, 'user', uid, 'deleted', { user_id: uid })
   return NextResponse.json({ ok: true })
 }

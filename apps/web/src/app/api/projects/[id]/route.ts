@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
-import { query, queryOne } from '@/lib/db'
+import { query, queryOne, auditLog } from '@/lib/db'
 
 export async function GET(
   req: NextRequest,
@@ -73,6 +73,7 @@ export async function PATCH(
     }
   }
 
+  await auditLog(session.id, 'project', params.id, 'updated', { fields: Object.keys(body) })
   return NextResponse.json({ ok: true })
 }
 
@@ -92,5 +93,6 @@ export async function DELETE(
   if (!project) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   await query(`DELETE FROM projects WHERE id = $1::uuid`, [params.id])
+  await auditLog(session.id, 'project', params.id, 'deleted', { name: project.name })
   return NextResponse.json({ ok: true })
 }

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
-import { query, queryOne } from '@/lib/db'
+import { query, queryOne, auditLog } from '@/lib/db'
 
 export async function GET(req: NextRequest) {
   const session = await getSession()
@@ -134,5 +134,9 @@ export async function POST(req: NextRequest) {
     `, [project.id, d.id, d.annex, d.name, d.code, JSON.stringify(content), templateVersionId])
   }
 
+  await auditLog(session.id, 'project', project.id, 'created', {
+    name: project.name,
+    device_name: project.device_name,
+  })
   return NextResponse.json(project, { status: 201 })
 }

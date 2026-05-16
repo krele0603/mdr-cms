@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { query, queryOne } from '@/lib/db'
+import { auditLog } from '@/lib/db'
 
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
   const session = await getSession()
@@ -76,6 +77,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     )
   }
 
+  await auditLog(session.id, 'eqms_document', params.id, 'content_saved', {})
   return NextResponse.json({ ok: true })
 }
 
