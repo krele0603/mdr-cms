@@ -27,7 +27,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     await query(
       `INSERT INTO eqms_approvals (entity_type, entity_id, version_id, requested_by, status)
        VALUES ('document', $1::uuid, $2::uuid, $3::uuid, 'pending')
-       ON CONFLICT DO NOTHING`,
+`,
       [params.id, doc.current_version_id, session.id]
     )
   }
