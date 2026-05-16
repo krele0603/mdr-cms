@@ -1,3 +1,5 @@
+version: '3.9'
+
 services:
 
   postgres:
@@ -18,20 +20,52 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    # Security hardening
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /run/postgresql
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
 
   redis:
     image: redis:7-alpine
     container_name: mdr_redis
     restart: unless-stopped
+    # Require a password for Redis — set REDIS_PASSWORD in .env
+    command: >
+      redis-server
+      --requirepass ${REDIS_PASSWORD}
+      --bind 0.0.0.0
+      --protected-mode yes
+      --maxmemory 128mb
+      --maxmemory-policy allkeys-lru
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
     volumes:
       - redis_data:/data
     networks:
       - mdr_internal
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 192M
 
   hocuspocus:
     image: node:20-alpine
@@ -40,31 +74,46 @@ services:
     working_dir: /app
     volumes:
       - ./apps/hocuspocus:/app
+      - hocuspocus_modules:/app/node_modules
     command: sh -c "npm install && node server.js"
     environment:
       PORT: 1234
-      REDIS_URL: redis://redis:6379
+      # Pass Redis URL with password
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      # Hocuspocus needs the JWT secret to validate session tokens on connect
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+      NODE_ENV: production
     networks:
       - mdr_internal
     depends_on:
       redis:
         condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
 
   web:
-    image: mdr-web
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
     container_name: mdr_web
     restart: unless-stopped
-    volumes:
-      - ./uploads:/data/uploads
-    ports:
-      - "3000:3000"
     environment:
       NODE_ENV: production
       DATABASE_URL: postgresql://${POSTGRES_USER:-mdrcms}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-mdrcms}
-      REDIS_URL: redis://redis:6379
+      # Redis URL with password
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
       NEXTAUTH_URL: https://${DOMAIN}
       HOCUSPOCUS_URL: ws://hocuspocus:1234
+    volumes:
+      # Persistent upload storage — outside the container filesystem
+      - uploads_data:/data/uploads
     networks:
       - mdr_internal
     depends_on:
@@ -72,6 +121,37 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    # web runs as non-root nextjs user (uid 1001) already — set in Dockerfile
+    deploy:
+      resources:
+        limits:
+          cpus: '1.5'
+          memory: 512M
+
+  nginx:
+    image: nginx:alpine
+    container_name: mdr_nginx
+    restart: unless-stopped
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    networks:
+      - mdr_internal
+    depends_on:
+      - web
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /var/cache/nginx
+      - /var/run
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 64M
 
   cloudflared:
     image: cloudflare/cloudflared:latest
@@ -80,12 +160,30 @@ services:
     command: tunnel --no-autoupdate run
     environment:
       TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
-    network_mode: host
+    networks:
+      - mdr_internal
+    depends_on:
+      - nginx
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 64M
 
 volumes:
   postgres_data:
   redis_data:
+  uploads_data:        # named volume for file uploads — survives container rebuilds
+  hocuspocus_modules:  # node_modules cache for hocuspocus
 
 networks:
   mdr_internal:
     driver: bridge
+    # Disable ICC (inter-container communication) by default if your Docker version supports it
+    # driver_opts:
+    #   com.docker.network.bridge.enable_icc: "false"

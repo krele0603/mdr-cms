@@ -4,6 +4,7 @@
   "private": true,
   "dependencies": {
     "@hocuspocus/server": "^2.13.5",
-    "@hocuspocus/extension-redis": "^2.13.5"
+    "@hocuspocus/extension-redis": "^2.13.5",
+    "jose": "^5.6.3"
   }
 }
