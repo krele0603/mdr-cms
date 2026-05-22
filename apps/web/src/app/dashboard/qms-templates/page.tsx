@@ -535,6 +535,8 @@ function ImportModal({ defaultLevel, onClose, onImported }: {
     extensions: [
       StarterKit,
       Underline,
+      TextStyle,
+      Color,
       TextAlign.configure({ types: ['heading', 'paragraph'] }),
       Table.configure({ resizable: false }),
       TableRow,

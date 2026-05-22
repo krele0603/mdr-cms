@@ -68,16 +68,84 @@ export async function POST(req: NextRequest) {
 
     try {
       const mammoth   = await import('mammoth')
+      const JSZip     = (await import('jszip')).default
       const buffer    = Buffer.from(await file.arrayBuffer())
-      const result    = await mammoth.convertToHtml({ buffer })
 
-      // Return raw HTML to the client — TipTap parses it natively
-      // This is more reliable than any custom HTML→JSON converter
+      // Extract alignment + color from raw DOCX XML
+      const zip = await JSZip.loadAsync(buffer)
+      const xmlFile = zip.file('word/document.xml')
+      const docXml = xmlFile ? await xmlFile.async('text') : ''
+
+      // Build text->style map from XML (match by text, not index — more reliable)
+      const buildStyleMap = (xml: string): Map<string, { align?: string; color?: string }> => {
+        const map = new Map<string, { align?: string; color?: string }>()
+        const xmlNoTables = xml.replace(/<w:tbl[ >][\s\S]*?<\/w:tbl>/g, '')
+        const paraRegex = /<w:p[ >][\s\S]*?<\/w:p>/g
+        let pm
+        while ((pm = paraRegex.exec(xmlNoTables)) !== null) {
+          const paraXml = pm[0]
+          const textParts: string[] = []
+          const tReg = /<w:t[^>]*>([^<]*)<\/w:t>/g
+          let tm
+          while ((tm = tReg.exec(paraXml)) !== null) textParts.push(tm[1])
+          const text = textParts.join('').trim()
+          if (!text) continue
+          const alignMatch = paraXml.match(/<w:jc[^>]*w:val="([^"]+)"/)
+          const align = alignMatch ? alignMatch[1] : undefined
+          const colors: string[] = []
+          const runRegex = /<w:r[ >][\s\S]*?<\/w:r>/g
+          let rm
+          while ((rm = runRegex.exec(paraXml)) !== null) {
+            const colorMatch = rm[0].match(/<w:color[^>]*w:val="([^"]+)"/)
+            if (colorMatch && colorMatch[1] !== 'auto' && colorMatch[1] !== '000000') {
+              colors.push('#' + colorMatch[1])
+            }
+          }
+          if (align || colors.length > 0) {
+            map.set(text.substring(0, 100), { align, color: colors[0] })
+          }
+        }
+        return map
+      }
+
+      const styleMap = buildStyleMap(docXml)
+      const result = await mammoth.convertToHtml({ buffer })
+
+      // Protect tables, apply styles to paragraphs by text match
+      const tableStore: string[] = []
+      let processedHtml = result.value.replace(/<table[\s\S]*?<\/table>/gi, (m: string) => {
+        tableStore.push(m)
+        return '__TABLE_' + (tableStore.length - 1) + '__'
+      })
+
+      processedHtml = processedHtml.replace(
+        /<(p|h[1-6])([^>]*)>([\s\S]*?)<\/\1>/gi,
+        (match: string, tag: string, attrs: string, inner: string) => {
+          const plainText = inner.replace(/<[^>]+>/g, '').trim().substring(0, 100)
+          const style = styleMap.get(plainText)
+          if (!style) return match
+          const styles: string[] = []
+          if (style.align) {
+            const alignMap: Record<string,string> = { center: 'center', right: 'right', both: 'justify' }
+            const ta = alignMap[style.align]
+            if (ta) styles.push('text-align:' + ta)
+          }
+          // Color goes on a span wrapping the content (TipTap Color extension reads span style)
+          // Alignment goes on the block element
+          const colorStyle = style.color ? ' style="color:' + style.color + '"' : ''
+          const blockStyle = styles.length > 0 ? ' style="' + styles.join(';') + '"' : ''
+          const wrappedInner = style.color ? '<span' + colorStyle + '>' + inner + '</span>' : inner
+          return '<' + tag + attrs + blockStyle + '>' + wrappedInner + '</' + tag + '>'
+        }
+      )
+
+      const html = processedHtml.replace(/__TABLE_(\d+)__/g, (_: string, i: string) => tableStore[parseInt(i)])
+
       if (preview) {
         return NextResponse.json({
           name,
           level,
-          html: result.value,           // raw HTML for TipTap setContent()
+          html,
           warnings: result.messages,
         })
       }
