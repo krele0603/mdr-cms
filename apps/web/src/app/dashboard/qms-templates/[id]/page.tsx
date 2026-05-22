@@ -20,6 +20,13 @@ import TableCell from '@tiptap/extension-table-cell'
 import CharacterCount from '@tiptap/extension-character-count'
 import { TableOfContents, getHierarchicalIndexes } from '@tiptap/extension-table-of-contents'
 
+interface TocItem {
+  id: string
+  textContent: string
+  level: number
+  itemIndex?: string
+}
+
 const LEVELS = [
   { level: 1, label: 'Policies',          color: '#3C3489', bg: '#EEEDFE', border: '#AFA9EC' },
   { level: 2, label: 'Procedures',        color: '#0C447C', bg: '#E6F1FB', border: '#85B7EB' },
@@ -84,6 +91,7 @@ const I = {
   Redo:        () => <svg width='13' height='13' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round'><path d='M21 7v6h-6'/><path d='M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3L21 13'/></svg>,
   Image:       () => <svg width='13' height='13' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round'><rect x='3' y='3' width='18' height='18' rx='2'/><circle cx='9' cy='9' r='2'/><path d='m21 15-5-5L5 21'/></svg>,
   ChevDown:    () => <svg width='9' height='9' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.5' strokeLinecap='round'><polyline points='6 9 12 15 18 9'/></svg>,
+  TOC:         () => <svg width='13' height='13' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round'><line x1='8' y1='6' x2='21' y2='6'/><line x1='8' y1='12' x2='21' y2='12'/><line x1='8' y1='18' x2='21' y2='18'/><line x1='3' y1='6' x2='3.01' y2='6'/><line x1='3' y1='12' x2='3.01' y2='12'/><line x1='3' y1='18' x2='3.01' y2='18'/></svg>,
   ArrowLeft:   () => <svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round'><path d='M19 12H5'/><polyline points='12 19 5 12 12 5'/></svg>,
 }
 
@@ -134,11 +142,39 @@ function FontPanel({ sizes, onChange, onClose, pos }: {
   )
 }
 
-function FullToolbar({ editor, sizes, onSizeChange, onInsertImage }: {
+function OutlinePanel({ items, onClose }: { items: TocItem[]; onClose: () => void }) {
+  return (
+    <div style={{ width: 220, flexShrink: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#faf9f7', borderRight: '1px solid #e0ddd8' }}>
+      <div style={{ padding: '10px 14px', borderBottom: '1px solid #e0ddd8', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#f5f2ee' }}>
+        <span style={{ fontSize: 11, fontWeight: 600, color: '#5a6472', textTransform: 'uppercase' as const, letterSpacing: '0.06em' }}>Outline</span>
+        <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#8a96a2', fontSize: 16, lineHeight: 1 }}>×</button>
+      </div>
+      <div style={{ flex: 1, overflowY: 'auto' as const, padding: '8px 0' }}>
+        {items.length === 0
+          ? <div style={{ padding: '20px 14px', fontSize: 12, color: '#8a96a2' }}>No headings yet.</div>
+          : items.map(item => (
+            <button key={item.id} onClick={() => { const el = document.getElementById(item.id); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }) }}
+              style={{ display: 'block', width: '100%', textAlign: 'left' as const, padding: `5px 14px 5px ${8 + (item.level - 1) * 12}px`, fontSize: item.level === 1 ? 12 : 11, fontWeight: item.level === 1 ? 600 : item.level === 2 ? 500 : 400, color: item.level === 1 ? '#1a1f24' : item.level === 2 ? '#2e3640' : '#5a6472', border: 'none', background: 'transparent', cursor: 'pointer', lineHeight: 1.4 }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(78,140,140,0.08)' }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+            >
+              {item.level > 1 && <span style={{ color: '#d8d4ce', marginRight: 4 }}>{'—'.repeat(item.level - 1)}</span>}
+              {item.textContent}
+            </button>
+          ))}
+      </div>
+    </div>
+  )
+}
+
+function FullToolbar({ editor, sizes, onSizeChange, onInsertImage, showOutline, onToggleOutline, onInsertToc }: {
   editor: any
   sizes: typeof DEFAULT_SIZES
   onSizeChange: (k: keyof typeof DEFAULT_SIZES, v: number) => void
   onInsertImage: () => void
+  showOutline: boolean
+  onToggleOutline: () => void
+  onInsertToc: () => void
 }) {
   const [showFont, setShowFont] = useState(false)
   const [showTable, setShowTable] = useState(false)
@@ -311,11 +347,14 @@ function FullToolbar({ editor, sizes, onSizeChange, onInsertImage }: {
       <Btn title="Justify"      active={editor.isActive({ textAlign: 'justify' })} onClick={() => editor.chain().focus().setTextAlign('justify').run()}><I.AlignJust /></Btn>
       <Sep />
       <Btn title="Insert image" onClick={onInsertImage}><I.Image /></Btn>
+      <Sep />
+      <Btn title={showOutline ? 'Hide outline' : 'Show outline'} active={showOutline} onClick={onToggleOutline}><I.TOC /></Btn>
+      <Btn title="Insert Table of Contents" onClick={onInsertToc}><I.TOC /><span style={{ fontSize: 10, marginLeft: 2 }}>ToC</span></Btn>
     </div>
   )
 }
 
-function makeExtensions() {
+function makeExtensions(onTocUpdate: (items: TocItem[]) => void) {
   return [
     StarterKit,
     TextStyle,
@@ -331,7 +370,7 @@ function makeExtensions() {
     TableCell,
     CharacterCount,
     Placeholder.configure({ placeholder: 'Template content…' }),
-    TableOfContents.configure({ getIndex: getHierarchicalIndexes, onUpdate: () => {} }),
+    TableOfContents.configure({ getIndex: getHierarchicalIndexes, onUpdate: (c: any) => onTocUpdate(c) }),
   ]
 }
 
@@ -343,9 +382,40 @@ export default function QmsTemplateEditorPage({ params }: { params: { id: string
   const [loading, setLoading] = useState(true)
   const [saved, setSaved] = useState(false)
   const [sizes, setSizes] = useState(DEFAULT_SIZES)
+  const [tocItems, setTocItems] = useState<TocItem[]>([])
+  const [showOutline, setShowOutline] = useState(false)
+
+  function insertToc() {
+    if (!editor || tocItems.length === 0) return
+    console.log('[TOC ITEMS]', JSON.stringify(tocItems.map(i => ({level: i.level, text: i.textContent}))))
+    const minLevel = Math.min(...tocItems.map(i => i.level))
+    // Build hierarchical counters
+    const counters = [0, 0, 0, 0, 0]
+    let lastDepth = -1
+    const lines = tocItems.map(item => {
+      const depth = item.level - minLevel
+      // Reset deeper counters when going up
+      if (depth < lastDepth) {
+        for (let i = depth + 1; i < counters.length; i++) counters[i] = 0
+      } else if (depth > lastDepth) {
+        counters[depth] = 0
+      }
+      lastDepth = depth
+      counters[depth]++
+      const number = counters.slice(0, depth + 1).join('.')
+      // Strip existing leading number from text (e.g. "8.2.1 Feedback" -> "Feedback", "7.3.1 General" -> "General")
+      const cleanText = item.textContent.replace(/^[\d]+[\d.]*\s+/, '').trim() || item.textContent
+      const indent = depth * 20
+      const fontSize = depth === 0 ? 13 : depth === 1 ? 12 : 11
+      const color = depth === 0 ? '#1a1f24' : depth === 1 ? '#2e3640' : '#5a6472'
+      const fontWeight = depth === 0 ? 600 : 400
+      return `<p style="margin:3px 0;padding-left:${indent}px;font-size:${fontSize}px;color:${color};font-weight:${fontWeight}">${number}. ${cleanText}</p>`
+    }).join('')
+    editor.chain().focus().insertContent(`<div class="toc-block"><h4>Table of Contents</h4>${lines}</div>`).run()
+  }
 
   const editor = useEditor({
-    extensions: makeExtensions(),
+    extensions: makeExtensions(setTocItems),
     editable: true,
   })
 
@@ -433,10 +503,15 @@ export default function QmsTemplateEditorPage({ params }: { params: { id: string
         sizes={sizes}
         onSizeChange={(k, v) => setSizes(p => ({ ...p, [k]: v }))}
         onInsertImage={insertImage}
+        showOutline={showOutline}
+        onToggleOutline={() => setShowOutline(v => !v)}
+        onInsertToc={insertToc}
       />
 
       {/* Editor body — full width */}
-      <div style={{ flex: 1, overflow: 'auto', padding: '32px 0' }}>
+      <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+        {showOutline && <OutlinePanel items={tocItems} onClose={() => setShowOutline(false)} />}
+        <div style={{ flex: 1, overflow: 'auto', padding: '32px 0' }}>
         {loading ? (
           <div style={{ textAlign: 'center', color: '#9b9991', padding: 40, fontSize: 13 }}>Loading…</div>
         ) : (
@@ -460,10 +535,18 @@ export default function QmsTemplateEditorPage({ params }: { params: { id: string
               .ProseMirror p.is-editor-empty:first-child::before { content: attr(data-placeholder); float: left; color: #8a96a2; pointer-events: none; height: 0; font-style: italic; }
               .ProseMirror img { max-width: 100%; height: auto; border-radius: 4px; margin: 8px 0; }
               .column-resize-handle { background-color: #185FA5; bottom: -2px; position: absolute; right: -2px; top: 0; width: 4px; pointer-events: none; }
+              .ProseMirror .toc-block { background: #f5f2ee; border: 1px solid #e0ddd8; border-radius: 6px; padding: 16px 20px; margin: 16px 0; }
+              .ProseMirror .toc-block h4 { font-size: 11px !important; font-weight: 600 !important; text-transform: uppercase; letter-spacing: 0.08em; color: #8a96a2 !important; margin: 0 0 10px !important; padding: 0 !important; border: none !important; }
+              .ProseMirror .toc-block p { margin: 3px 0 !important; display: block !important; visibility: visible !important; }
+              .ProseMirror .toc-block p strong { font-weight: inherit !important; color: inherit !important; }
+              .ProseMirror .toc-block p, .ProseMirror .toc-block p * { color: inherit !important; }
+              [data-type="tableOfContentsItem"] { display: none !important; }
+              .toc-item { display: none !important; }
             `}</style>
             <EditorContent editor={editor} />
           </div>
         )}
+        </div>
       </div>
     </div>
   )
