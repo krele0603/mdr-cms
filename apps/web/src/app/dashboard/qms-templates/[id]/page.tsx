@@ -1,8 +1,8 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Underline from '@tiptap/extension-underline'
@@ -27,17 +27,11 @@ const LEVELS = [
   { level: 4, label: 'Forms & Templates', color: '#633806', bg: '#FAEEDA', border: '#FAC775' },
 ]
 
-interface Template {
-  id: string
-  name: string
-  level: number
-  status: string
-  created_at: string
-  updated_at: string
-}
-
-// ── Constants ────────────────────────────────────────────────────────────────
-
+// TODO: Add more fonts — consider adding:
+// - Roboto, Open Sans (common professional sans-serif)
+// - Calibri (default Word font — important for QMS docs)
+// - Garamond, Palatino (traditional document fonts)
+// - Source Sans Pro, Lato (modern clean options)
 const FONTS = [
   { label: 'DM Sans',            value: "'DM Sans', sans-serif" },
   { label: 'Cormorant Garamond', value: "'Cormorant Garamond', serif" },
@@ -73,7 +67,6 @@ const TEXT_COLORS = [
 
 const DEFAULT_SIZES = { p: 13, h1: 22, h2: 18, h3: 15, h4: 13 }
 
-// ── Icons ────────────────────────────────────────────────────────────────────
 const I = {
   Bold:        () => <svg width='13' height='13' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.5' strokeLinecap='round'><path d='M6 4h8a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z'/><path d='M6 12h9a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z'/></svg>,
   Italic:      () => <svg width='13' height='13' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.5' strokeLinecap='round'><line x1='19' y1='4' x2='10' y2='4'/><line x1='14' y1='20' x2='5' y2='20'/><line x1='15' y1='4' x2='9' y2='20'/></svg>,
@@ -91,9 +84,8 @@ const I = {
   Redo:        () => <svg width='13' height='13' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round'><path d='M21 7v6h-6'/><path d='M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3L21 13'/></svg>,
   Image:       () => <svg width='13' height='13' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round'><rect x='3' y='3' width='18' height='18' rx='2'/><circle cx='9' cy='9' r='2'/><path d='m21 15-5-5L5 21'/></svg>,
   ChevDown:    () => <svg width='9' height='9' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.5' strokeLinecap='round'><polyline points='6 9 12 15 18 9'/></svg>,
+  ArrowLeft:   () => <svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round'><path d='M19 12H5'/><polyline points='12 19 5 12 12 5'/></svg>,
 }
-
-// ── Toolbar helpers ──────────────────────────────────────────────────────────
 
 function Btn({ active, disabled, onClick, title, children }: {
   active?: boolean; disabled?: boolean; onClick: () => void; title: string; children: React.ReactNode
@@ -109,8 +101,6 @@ function Btn({ active, disabled, onClick, title, children }: {
 
 function Sep() { return <div style={{ width: 1, height: 18, background: 'rgba(0,0,0,0.12)', margin: '0 2px', flexShrink: 0 }} /> }
 function Overlay({ onClose }: { onClose: () => void }) { return <div style={{ position: 'fixed', inset: 0, zIndex: 9998 }} onClick={onClose} /> }
-
-// ── Font size panel ──────────────────────────────────────────────────────────
 
 function FontPanel({ sizes, onChange, onClose, pos }: {
   sizes: typeof DEFAULT_SIZES
@@ -143,8 +133,6 @@ function FontPanel({ sizes, onChange, onClose, pos }: {
     </div>
   )
 }
-
-// ── Full Toolbar ─────────────────────────────────────────────────────────────
 
 function FullToolbar({ editor, sizes, onSizeChange, onInsertImage }: {
   editor: any
@@ -197,12 +185,9 @@ function FullToolbar({ editor, sizes, onSizeChange, onInsertImage }: {
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'nowrap', gap: 1, padding: '3px 8px', borderBottom: '0.5px solid rgba(0,0,0,0.1)', background: '#f8f7f4', overflowX: 'auto' }}>
-      {/* Undo/Redo */}
       <Btn title="Undo" disabled={!editor.can().undo()} onClick={() => editor.chain().focus().undo().run()}><I.Undo /></Btn>
       <Btn title="Redo" disabled={!editor.can().redo()} onClick={() => editor.chain().focus().redo().run()}><I.Redo /></Btn>
       <Sep />
-
-      {/* Heading + Font */}
       <select value={headingValue} onChange={e => {
         const v = e.target.value
         if (v === '0') editor.chain().focus().setParagraph().run()
@@ -214,29 +199,21 @@ function FullToolbar({ editor, sizes, onSizeChange, onInsertImage }: {
         <option value="3">Heading 3</option>
         <option value="4">Heading 4</option>
       </select>
-
       <select value={currentFont} onChange={e => editor.chain().focus().setFontFamily(e.target.value).run()}
         style={{ height: 26, padding: '0 5px', fontSize: 11, border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 4, background: '#fff', cursor: 'pointer', color: '#2e3640', maxWidth: 130, marginLeft: 3 }}>
         {FONTS.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
       </select>
-
-      {/* Font sizes */}
       <div ref={fontRef}>
         <Btn title="Font sizes" active={showFont} onClick={() => { setFontPos(getPos(fontRef)); closeAll(); setShowFont(v => !v) }}>
           <span style={{ fontSize: 11, fontWeight: 600 }}>Aa</span><I.ChevDown />
         </Btn>
       </div>
       {showFont && (<><Overlay onClose={() => setShowFont(false)} /><FontPanel sizes={sizes} onChange={onSizeChange} onClose={() => setShowFont(false)} pos={fontPos} /></>)}
-
       <Sep />
-
-      {/* Basic formatting */}
       <Btn title="Bold"          active={editor.isActive('bold')}      onClick={() => editor.chain().focus().toggleBold().run()}><I.Bold /></Btn>
       <Btn title="Italic"        active={editor.isActive('italic')}    onClick={() => editor.chain().focus().toggleItalic().run()}><I.Italic /></Btn>
       <Btn title="Underline"     active={editor.isActive('underline')} onClick={() => editor.chain().focus().toggleUnderline().run()}><I.Underline /></Btn>
       <Btn title="Strikethrough" active={editor.isActive('strike')}    onClick={() => editor.chain().focus().toggleStrike().run()}><I.Strike /></Btn>
-
-      {/* Text color */}
       <div ref={textColorRef}>
         <button onMouseDown={e => { e.preventDefault(); setTextColorPos(getPos(textColorRef)); closeAll(); setShowTextColor(v => !v) }}
           title="Text color" style={{ height: 28, minWidth: 28, padding: '0 5px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column' as const, gap: 1, border: 'none', borderRadius: 4, background: showTextColor ? 'rgba(24,95,165,0.12)' : 'transparent', cursor: 'pointer' }}>
@@ -262,8 +239,6 @@ function FullToolbar({ editor, sizes, onSizeChange, onInsertImage }: {
           </div></>
         )}
       </div>
-
-      {/* Highlight */}
       <div ref={highlightRef}>
         <button onMouseDown={e => { e.preventDefault(); setHighlightPos(getPos(highlightRef)); closeAll(); setShowHighlight(v => !v) }}
           title="Highlight" style={{ height: 28, minWidth: 28, padding: '0 5px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column' as const, gap: 1, border: 'none', borderRadius: 4, background: showHighlight ? 'rgba(24,95,165,0.12)' : 'transparent', cursor: 'pointer' }}>
@@ -289,14 +264,9 @@ function FullToolbar({ editor, sizes, onSizeChange, onInsertImage }: {
           </div></>
         )}
       </div>
-
       <Sep />
-
-      {/* Lists */}
       <Btn title="Bullet list"   active={editor.isActive('bulletList')}  onClick={() => editor.chain().focus().toggleBulletList().run()}><I.BulletList /></Btn>
       <Btn title="Numbered list" active={editor.isActive('orderedList')} onClick={() => editor.chain().focus().toggleOrderedList().run()}><I.OrderedList /></Btn>
-
-      {/* Table with grid picker */}
       <div ref={tableRef}>
         <Btn title="Table" active={showTable} onClick={() => { setTablePos(getPos(tableRef)); closeAll(); setShowTable(v => !v) }}>
           <I.Table />
@@ -334,24 +304,16 @@ function FullToolbar({ editor, sizes, onSizeChange, onInsertImage }: {
           </div></>
         )}
       </div>
-
       <Sep />
-
-      {/* Alignment */}
       <Btn title="Align left"   active={editor.isActive({ textAlign: 'left' })}    onClick={() => editor.chain().focus().setTextAlign('left').run()}><I.AlignLeft /></Btn>
       <Btn title="Align center" active={editor.isActive({ textAlign: 'center' })}  onClick={() => editor.chain().focus().setTextAlign('center').run()}><I.AlignCenter /></Btn>
       <Btn title="Align right"  active={editor.isActive({ textAlign: 'right' })}   onClick={() => editor.chain().focus().setTextAlign('right').run()}><I.AlignRight /></Btn>
       <Btn title="Justify"      active={editor.isActive({ textAlign: 'justify' })} onClick={() => editor.chain().focus().setTextAlign('justify').run()}><I.AlignJust /></Btn>
-
       <Sep />
-
-      {/* Image */}
       <Btn title="Insert image" onClick={onInsertImage}><I.Image /></Btn>
     </div>
   )
 }
-
-// ── Editor extensions ────────────────────────────────────────────────────────
 
 function makeExtensions() {
   return [
@@ -373,18 +335,14 @@ function makeExtensions() {
   ]
 }
 
-// ── Template editor modal ────────────────────────────────────────────────────
-
-function TemplateEditorModal({ template, onClose, onSaved }: {
-  template: Template & { content?: any }
-  onClose: () => void
-  onSaved: (t: Template) => void
-}) {
-  const [name, setName] = useState(template.name)
+export default function QmsTemplateEditorPage({ params }: { params: { id: string } }) {
+  const router = useRouter()
+  const [name, setName] = useState('')
+  const [level, setLevel] = useState(0)
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [saved, setSaved] = useState(false)
   const [sizes, setSizes] = useState(DEFAULT_SIZES)
-  const contentLoaded = useRef(false)
 
   const editor = useEditor({
     extensions: makeExtensions(),
@@ -392,22 +350,17 @@ function TemplateEditorModal({ template, onClose, onSaved }: {
   })
 
   useEffect(() => {
-    fetch(`/api/qms-templates/${template.id}`)
+    fetch(`/api/qms-templates/${params.id}`)
       .then(r => r.json())
       .then(data => {
+        setName(data.name || '')
+        setLevel(data.level || 0)
         if (editor && data.content && data.content.type === 'doc') {
           editor.commands.setContent(data.content)
         }
-        contentLoaded.current = true
         setLoading(false)
       })
-  }, [template.id, editor])
-
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
-    document.addEventListener('keydown', handler)
-    return () => document.removeEventListener('keydown', handler)
-  }, [onClose])
+  }, [params.id, editor])
 
   function insertImage() {
     if (!editor) return
@@ -428,395 +381,90 @@ function TemplateEditorModal({ template, onClose, onSaved }: {
     if (!editor) return
     setSaving(true)
     try {
-      const res = await fetch(`/api/qms-templates/${template.id}`, {
+      const res = await fetch(`/api/qms-templates/${params.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: name.trim(), content: editor.getJSON() }),
       })
       if (res.ok) {
-        const updated = await res.json()
-        onSaved({ ...template, ...updated, name: name.trim() })
-        onClose()
+        setSaved(true)
+        setTimeout(() => setSaved(false), 2000)
       }
     } finally { setSaving(false) }
   }
 
-  const lv = LEVELS.find(l => l.level === template.level)!
+  const lv = LEVELS.find(l => l.level === level)
   const wordCount = editor?.storage.characterCount?.words() ?? 0
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-      <div style={{ background: '#fff', borderRadius: 12, width: '94vw', maxWidth: 980, height: '92vh', display: 'flex', flexDirection: 'column' as const, boxShadow: '0 12px 48px rgba(0,0,0,0.22)', overflow: 'hidden' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: '#f5f2ee' }}>
 
-        {/* Header */}
-        <div style={{ padding: '12px 18px', borderBottom: '0.5px solid rgba(0,0,0,0.1)', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
+      {/* Top bar */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '0 16px', height: 48, background: '#fff', borderBottom: '0.5px solid rgba(0,0,0,0.1)', flexShrink: 0 }}>
+        <button onClick={() => router.push('/dashboard/qms-templates')}
+          style={{ display: 'flex', alignItems: 'center', gap: 6, height: 30, padding: '0 10px', fontSize: 12, border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 6, background: 'transparent', cursor: 'pointer', color: '#5a6472' }}>
+          <I.ArrowLeft /> Back
+        </button>
+
+        {lv && (
           <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 4, background: lv.bg, color: lv.color, border: `0.5px solid ${lv.border}`, fontWeight: 500, whiteSpace: 'nowrap' as const }}>
-            Level {template.level} — {lv.label}
+            Level {level} — {lv.label}
           </span>
-          <input value={name} onChange={e => setName(e.target.value)}
-            style={{ flex: 1, fontSize: 15, fontWeight: 600, border: 'none', outline: 'none', color: '#1a1f24', background: 'transparent' }} />
-          <span style={{ fontSize: 11, color: '#9b9991', flexShrink: 0 }}>{wordCount} words</span>
-          <button type="button" onClick={onClose}
-            style={{ width: 28, height: 28, border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 6, background: 'transparent', cursor: 'pointer', fontSize: 18, color: '#5a6472', lineHeight: 1, flexShrink: 0 }}>×</button>
-        </div>
+        )}
 
-        {/* Full toolbar */}
-        <FullToolbar
-          editor={editor}
-          sizes={sizes}
-          onSizeChange={(k, v) => setSizes(p => ({ ...p, [k]: v }))}
-          onInsertImage={insertImage}
-        />
+        <input value={name} onChange={e => setName(e.target.value)}
+          style={{ flex: 1, fontSize: 15, fontWeight: 600, border: 'none', outline: 'none', color: '#1a1f24', background: 'transparent' }} />
 
-        {/* Editor body */}
-        <div style={{ flex: 1, overflow: 'auto', background: '#f5f2ee', padding: '32px 0' }}>
-          {loading ? (
-            <div style={{ textAlign: 'center', color: '#9b9991', padding: 40, fontSize: 13 }}>Loading…</div>
-          ) : (
-            <div style={{ maxWidth: 760, margin: '0 auto', background: '#fff', boxShadow: '0 1px 4px rgba(0,0,0,0.08)', borderRadius: 2, padding: '48px 64px', minHeight: 500 }}>
-              <style>{`
-                .ProseMirror { outline: none; font-size: ${sizes.p}px; line-height: 1.8; color: #1a1f24; min-height: 400px; }
-                .ProseMirror p { margin: 0 0 10px; }
-                .ProseMirror h1 { font-family: 'Cormorant Garamond', serif; font-size: ${sizes.h1}px; font-weight: 700; margin: 24px 0 10px; padding-bottom: 6px; border-bottom: 1px solid #e0ddd8; }
-                .ProseMirror h2 { font-family: 'Cormorant Garamond', serif; font-size: ${sizes.h2}px; font-weight: 600; margin: 20px 0 8px; }
-                .ProseMirror h3 { font-size: ${sizes.h3}px; font-weight: 600; margin: 16px 0 6px; }
-                .ProseMirror h4 { font-size: ${sizes.h4}px; font-weight: 600; margin: 12px 0 4px; color: #5a6472; }
-                .ProseMirror ul { list-style-type: disc !important; padding-left: 22px; margin: 6px 0 10px; }
-                .ProseMirror ol { list-style-type: decimal !important; padding-left: 22px; margin: 6px 0 10px; }
-                .ProseMirror li { margin-bottom: 3px; }
-                .ProseMirror li p { margin: 0; display: inline; }
-                .ProseMirror table { border-collapse: collapse; width: 100%; margin: 14px 0; }
-                .ProseMirror th { background: #f5f2ee; padding: 7px 11px; border: 1px solid #d8d4ce; font-weight: 600; font-size: ${sizes.p}px; }
-                .ProseMirror td { padding: 7px 11px; border: 1px solid #d8d4ce; vertical-align: top; font-size: ${sizes.p}px; }
-                .ProseMirror tr:nth-child(even) td { background: #faf9f7; }
-                .ProseMirror .selectedCell { background: rgba(24,95,165,0.08) !important; }
-                .ProseMirror p.is-editor-empty:first-child::before { content: attr(data-placeholder); float: left; color: #8a96a2; pointer-events: none; height: 0; font-style: italic; }
-                .ProseMirror img { max-width: 100%; height: auto; border-radius: 4px; margin: 8px 0; }
-                .column-resize-handle { background-color: #185FA5; bottom: -2px; position: absolute; right: -2px; top: 0; width: 4px; pointer-events: none; }
-              `}</style>
-              <EditorContent editor={editor} />
-            </div>
-          )}
-        </div>
+        <span style={{ fontSize: 11, color: '#9b9991', flexShrink: 0 }}>{wordCount} words</span>
 
-        {/* Footer */}
-        <div style={{ padding: '10px 18px', borderTop: '0.5px solid rgba(0,0,0,0.1)', display: 'flex', justifyContent: 'flex-end', gap: 8, flexShrink: 0, background: '#fff' }}>
-          <button type="button" onClick={onClose}
-            style={{ height: 32, padding: '0 16px', fontSize: 13, background: 'transparent', border: '0.5px solid rgba(0,0,0,0.2)', borderRadius: 8, cursor: 'pointer', color: '#5a6472' }}>
-            Cancel
-          </button>
-          <button type="button" onClick={handleSave} disabled={saving || !name.trim()}
-            style={{ height: 32, padding: '0 20px', fontSize: 13, background: '#185FA5', border: 'none', borderRadius: 8, cursor: 'pointer', color: '#fff', fontWeight: 500, opacity: saving ? 0.7 : 1 }}>
-            {saving ? 'Saving…' : 'Save template'}
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
+        {saved && (
+          <span style={{ fontSize: 12, color: '#27500A', background: '#EAF3DE', padding: '3px 10px', borderRadius: 6, flexShrink: 0 }}>Saved ✓</span>
+        )}
 
-// ── Import DOCX modal ────────────────────────────────────────────────────────
-
-function ImportModal({ defaultLevel, onClose, onImported }: {
-  defaultLevel: number
-  onClose: () => void
-  onImported: (t: Template) => void
-}) {
-  const [level, setLevel] = useState(defaultLevel)
-  const [file, setFile] = useState<File | null>(null)
-  const [name, setName] = useState('')
-  const [preview, setPreview] = useState<any>(null)
-  const [previewing, setPreviewing] = useState(false)
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState('')
-  const fileInputRef = useRef<HTMLInputElement>(null)
-
-  const previewEditor = useEditor({
-    extensions: [
-      StarterKit,
-      Underline,
-      TextAlign.configure({ types: ['heading', 'paragraph'] }),
-      Table.configure({ resizable: false }),
-      TableRow,
-      TableHeader,
-      TableCell,
-    ],
-    editable: false,
-  })
-
-  useEffect(() => {
-    if (previewEditor && preview?.html) {
-      previewEditor.commands.setContent(preview.html)
-    }
-  }, [preview, previewEditor])
-
-  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files?.[0]
-    if (!f) return
-    if (!f.name.endsWith('.docx')) { setError('Only .docx files supported'); return }
-    setFile(f)
-    setName(f.name.replace(/\.docx$/i, '').replace(/[-_]/g, ' '))
-    setPreview(null)
-    setError('')
-  }
-
-  async function handlePreview() {
-    if (!file || !name.trim()) { setError('Please select a file and enter a name'); return }
-    setPreviewing(true); setError('')
-    try {
-      const fd = new FormData()
-      fd.append('file', file); fd.append('level', String(level)); fd.append('name', name.trim()); fd.append('preview', 'true')
-      const res = await fetch('/api/qms-templates', { method: 'POST', body: fd })
-      if (!res.ok) { const d = await res.json(); setError(d.error || 'Preview failed'); return }
-      const data = await res.json()
-      setPreview(data)
-    } catch (e: any) { setError(e.message) }
-    finally { setPreviewing(false) }
-  }
-
-  async function handleSave() {
-    if (!preview || !previewEditor) return
-    setSaving(true)
-    try {
-      // Get TipTap JSON from the rendered preview editor
-      // This is more reliable than converting HTML manually on the server
-      const tiptapJson = previewEditor.getJSON()
-      const res = await fetch('/api/qms-templates', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: name.trim(), level, content: tiptapJson }),
-      })
-      if (!res.ok) { const d = await res.json(); setError(d.error || 'Save failed'); return }
-      onImported(await res.json()); onClose()
-    } catch (e: any) { setError(e.message) }
-    finally { setSaving(false) }
-  }
-
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
-    document.addEventListener('keydown', handler)
-    return () => document.removeEventListener('keydown', handler)
-  }, [onClose])
-
-  return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-      <div style={{ background: '#fff', borderRadius: 12, width: '90vw', maxWidth: 780, maxHeight: '92vh', display: 'flex', flexDirection: 'column' as const, boxShadow: '0 12px 48px rgba(0,0,0,0.2)' }}>
-        <div style={{ padding: '16px 20px', borderBottom: '0.5px solid rgba(0,0,0,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ fontSize: 16, fontWeight: 700, color: '#1a1f24' }}>Import DOCX template</div>
-          <button type="button" onClick={onClose} style={{ width: 28, height: 28, border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 6, background: 'transparent', cursor: 'pointer', fontSize: 16, color: '#5a6472' }}>×</button>
-        </div>
-        <div style={{ flex: 1, overflow: 'auto', padding: '20px 24px' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
-            <div>
-              <label style={{ fontSize: 12, color: '#5a6472', display: 'block', marginBottom: 6 }}>Template name</label>
-              <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Document Control Procedure"
-                style={{ width: '100%', height: 36, padding: '0 10px', fontSize: 13, border: '0.5px solid rgba(0,0,0,0.2)', borderRadius: 6, outline: 'none', boxSizing: 'border-box' as const }} />
-            </div>
-            <div>
-              <label style={{ fontSize: 12, color: '#5a6472', display: 'block', marginBottom: 6 }}>Level</label>
-              <select value={level} onChange={e => setLevel(Number(e.target.value))}
-                style={{ width: '100%', height: 36, padding: '0 10px', fontSize: 13, border: '0.5px solid rgba(0,0,0,0.2)', borderRadius: 6, outline: 'none', background: '#fff', boxSizing: 'border-box' as const }}>
-                {LEVELS.map(l => <option key={l.level} value={l.level}>{l.level}. {l.label}</option>)}
-              </select>
-            </div>
-          </div>
-          <div onClick={() => fileInputRef.current?.click()}
-            style={{ border: `2px dashed ${file ? '#185FA5' : '#d8d4ce'}`, borderRadius: 8, padding: '20px', textAlign: 'center' as const, cursor: 'pointer', marginBottom: 16, background: file ? 'rgba(24,95,165,0.03)' : '#faf9f7' }}>
-            <input ref={fileInputRef} type="file" accept=".docx" style={{ display: 'none' }} onChange={handleFileChange} />
-            {file ? (
-              <div><div style={{ fontSize: 24, marginBottom: 4 }}>📄</div><div style={{ fontSize: 13, fontWeight: 600, color: '#185FA5' }}>{file.name}</div><div style={{ fontSize: 11, color: '#8a96a2', marginTop: 2 }}>{(file.size / 1024).toFixed(0)} KB — click to change</div></div>
-            ) : (
-              <div><div style={{ fontSize: 24, marginBottom: 4 }}>📁</div><div style={{ fontSize: 13, color: '#5a6472' }}>Click to select a .docx file</div><div style={{ fontSize: 11, color: '#8a96a2', marginTop: 2 }}>Word documents only</div></div>
-            )}
-          </div>
-          {error && <div style={{ fontSize: 12, color: '#943030', marginBottom: 12, padding: '8px 12px', background: 'rgba(148,48,48,0.06)', borderRadius: 6 }}>{error}</div>}
-          {preview && (
-            <div style={{ border: '0.5px solid rgba(0,0,0,0.12)', borderRadius: 8, overflow: 'hidden' }}>
-              <div style={{ padding: '8px 14px', background: '#f5f2ee', borderBottom: '0.5px solid rgba(0,0,0,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: '#1a1f24' }}>Preview — {name}</div>
-                {preview.warnings?.length > 0 && <div style={{ fontSize: 11, color: '#8a6020' }}>{preview.warnings.length} conversion note(s)</div>}
-              </div>
-              <div style={{ padding: '16px 20px', maxHeight: 360, overflowY: 'auto' as const }}>
-                <EditorContent editor={previewEditor} style={{ fontSize: 13, lineHeight: 1.8, color: '#1a1f24' }} />
-              </div>
-            </div>
-          )}
-        </div>
-        <div style={{ padding: '12px 20px', borderTop: '0.5px solid rgba(0,0,0,0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <button type="button" onClick={onClose} style={{ height: 34, padding: '0 16px', fontSize: 13, background: 'transparent', border: '0.5px solid rgba(0,0,0,0.2)', borderRadius: 8, cursor: 'pointer', color: '#5a6472' }}>Cancel</button>
-          <div style={{ display: 'flex', gap: 8 }}>
-            {!preview ? (
-              <button type="button" onClick={handlePreview} disabled={!file || !name.trim() || previewing}
-                style={{ height: 34, padding: '0 20px', fontSize: 13, background: '#185FA5', border: 'none', borderRadius: 8, cursor: file && name.trim() ? 'pointer' : 'default', color: '#fff', fontWeight: 500, opacity: (!file || !name.trim() || previewing) ? 0.6 : 1 }}>
-                {previewing ? 'Converting…' : 'Preview import'}
-              </button>
-            ) : (
-              <>
-                <button type="button" onClick={() => setPreview(null)} style={{ height: 34, padding: '0 16px', fontSize: 13, background: 'transparent', border: '0.5px solid rgba(0,0,0,0.2)', borderRadius: 8, cursor: 'pointer', color: '#5a6472' }}>Re-select file</button>
-                <button type="button" onClick={handleSave} disabled={saving} style={{ height: 34, padding: '0 20px', fontSize: 13, background: '#185FA5', border: 'none', borderRadius: 8, cursor: 'pointer', color: '#fff', fontWeight: 500, opacity: saving ? 0.7 : 1 }}>
-                  {saving ? 'Saving…' : 'Save template'}
-                </button>
-              </>
-            )}
-          </div>
-        </div>
-      </div>
-      <style>{`
-        .ProseMirror { outline: none; }
-        .ProseMirror h1 { font-size: 18px; font-weight: 700; margin: 12px 0 6px; }
-        .ProseMirror h2 { font-size: 15px; font-weight: 600; margin: 10px 0 4px; }
-        .ProseMirror h3 { font-size: 13px; font-weight: 600; margin: 8px 0 4px; }
-        .ProseMirror p { margin: 0 0 6px; }
-        .ProseMirror ul { list-style: disc; padding-left: 18px; margin: 4px 0; }
-        .ProseMirror ol { list-style: decimal; padding-left: 18px; margin: 4px 0; }
-        .ProseMirror table { border-collapse: collapse; width: 100%; }
-        .ProseMirror td, .ProseMirror th { border: 1px solid #e0ddd8; padding: 6px 10px; font-size: 12px; }
-        .ProseMirror th { background: #f5f2ee; font-weight: 600; }
-      `}</style>
-    </div>
-  )
-}
-
-// ── Main page ────────────────────────────────────────────────────────────────
-
-export default function QmsTemplatesPage() {
-  const [activeLevel, setActiveLevel] = useState(1)
-  const [templates, setTemplates] = useState<Template[]>([])
-  const [loading, setLoading] = useState(true)
-  const [userRole, setUserRole] = useState('')
-  const [showImport, setShowImport] = useState(false)
-  const [editingTemplate, setEditingTemplate] = useState<Template | null>(null)
-  const router = useRouter()
-  const [deletingId, setDeletingId] = useState<string | null>(null)
-
-  useEffect(() => {
-    fetch('/api/auth/session').then(r => r.json()).then(d => setUserRole(d?.user?.role || ''))
-  }, [])
-
-  useEffect(() => { loadTemplates() }, [activeLevel])
-
-  async function loadTemplates() {
-    setLoading(true)
-    const res = await fetch(`/api/qms-templates?level=${activeLevel}`)
-    if (res.ok) setTemplates(await res.json())
-    setLoading(false)
-  }
-
-  async function handleArchive(id: string) {
-    if (!confirm('Archive this template? It will be hidden from the library but not permanently deleted.')) return
-    setDeletingId(id)
-    await fetch(`/api/qms-templates/${id}`, { method: 'DELETE' })
-    setTemplates(prev => prev.filter(t => t.id !== id))
-    setDeletingId(null)
-  }
-
-  async function handleHardDelete(id: string, name: string) {
-    if (!confirm(`Permanently delete "${name}"?\n\nThis cannot be undone. The template will be gone forever.`)) return
-    setDeletingId(id)
-    await fetch(`/api/qms-templates/${id}?hard=true`, { method: 'DELETE' })
-    setTemplates(prev => prev.filter(t => t.id !== id))
-    setDeletingId(null)
-  }
-
-  const isAdmin = userRole === 'admin'
-  const isAdminOrConsultant = ['admin', 'consultant'].includes(userRole)
-  const lv = LEVELS.find(l => l.level === activeLevel)!
-
-  return (
-    <div style={{ maxWidth: 1000, margin: '0 auto', padding: '28px 24px' }}>
-      <div style={{ marginBottom: 24 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#8a96a2', marginBottom: 10 }}>
-          <Link href="/dashboard" style={{ color: '#8a96a2', textDecoration: 'none' }}>Dashboard</Link>
-          <span>›</span>
-          <span style={{ color: '#1a1f24' }}>QMS Template Library</span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div>
-            <h1 style={{ fontSize: 22, fontWeight: 700, color: '#1a1f24', margin: '0 0 4px' }}>QMS Template Library</h1>
-            <div style={{ fontSize: 13, color: '#8a96a2' }}>Import and manage document templates for all QMS levels</div>
-          </div>
-          {isAdminOrConsultant && (
-            <button type="button" onClick={() => setShowImport(true)}
-              style={{ height: 36, padding: '0 18px', fontSize: 13, background: '#185FA5', border: 'none', borderRadius: 8, cursor: 'pointer', color: '#fff', fontWeight: 500 }}>
-              + Import DOCX
-            </button>
-          )}
-        </div>
+        <button onClick={handleSave} disabled={saving || !name.trim()}
+          style={{ height: 32, padding: '0 20px', fontSize: 13, background: '#185FA5', border: 'none', borderRadius: 8, cursor: 'pointer', color: '#fff', fontWeight: 500, opacity: saving ? 0.7 : 1, flexShrink: 0 }}>
+          {saving ? 'Saving…' : 'Save template'}
+        </button>
       </div>
 
-      {/* Level tabs */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' as const }}>
-        {LEVELS.map(l => (
-          <button key={l.level} type="button" onClick={() => setActiveLevel(l.level)}
-            style={{ height: 34, padding: '0 16px', fontSize: 13, border: activeLevel === l.level ? `1.5px solid ${l.color}` : '0.5px solid rgba(0,0,0,0.15)', borderRadius: 20, background: activeLevel === l.level ? l.bg : '#fff', color: activeLevel === l.level ? l.color : '#5a6472', cursor: 'pointer', fontWeight: activeLevel === l.level ? 600 : 400 }}>
-            {l.level}. {l.label}
-          </button>
-        ))}
-      </div>
+      {/* Toolbar */}
+      <FullToolbar
+        editor={editor}
+        sizes={sizes}
+        onSizeChange={(k, v) => setSizes(p => ({ ...p, [k]: v }))}
+        onInsertImage={insertImage}
+      />
 
-      {/* Templates list */}
-      <div style={{ background: '#fff', border: '0.5px solid rgba(0,0,0,0.1)', borderRadius: 12, overflow: 'hidden' }}>
-        <div style={{ padding: '12px 18px', borderBottom: '0.5px solid rgba(0,0,0,0.08)', background: '#f8f7f4', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 4, background: lv.bg, color: lv.color, border: `0.5px solid ${lv.border}`, fontWeight: 500 }}>Level {activeLevel}</span>
-            <span style={{ fontSize: 13, fontWeight: 600, color: '#1a1f24' }}>{lv.label}</span>
-          </div>
-          <span style={{ fontSize: 11, color: '#8a96a2' }}>{templates.length} template{templates.length !== 1 ? 's' : ''}</span>
-        </div>
-
+      {/* Editor body — full width */}
+      <div style={{ flex: 1, overflow: 'auto', padding: '32px 0' }}>
         {loading ? (
-          <div style={{ padding: '40px', textAlign: 'center' as const, color: '#9b9991', fontSize: 13 }}>Loading…</div>
-        ) : templates.length === 0 ? (
-          <div style={{ padding: '48px 24px', textAlign: 'center' as const }}>
-            <div style={{ fontSize: 32, marginBottom: 8 }}>📄</div>
-            <div style={{ fontSize: 14, color: '#5a6472', marginBottom: 4 }}>No templates yet</div>
-            <div style={{ fontSize: 12, color: '#9b9991' }}>
-              {isAdminOrConsultant ? 'Click "+ Import DOCX" to add templates for this level.' : 'No templates have been added for this level yet.'}
-            </div>
-          </div>
+          <div style={{ textAlign: 'center', color: '#9b9991', padding: 40, fontSize: 13 }}>Loading…</div>
         ) : (
-          templates.map((t, idx) => (
-            <div key={t.id} style={{ padding: '14px 18px', borderBottom: idx < templates.length - 1 ? '0.5px solid rgba(0,0,0,0.06)' : 'none', display: 'flex', alignItems: 'center', gap: 14 }}>
-              <div style={{ width: 36, height: 36, borderRadius: 8, background: lv.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0 }}>📄</div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: '#1a1f24', marginBottom: 2 }}>{t.name}</div>
-                <div style={{ fontSize: 11, color: '#8a96a2' }}>Updated {new Date(t.updated_at || t.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</div>
-              </div>
-              {isAdminOrConsultant && (
-                <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                  <button type="button" onClick={() => router.push(`/dashboard/qms-templates/${t.id}`)}
-                    style={{ height: 30, padding: '0 12px', fontSize: 12, background: 'transparent', border: '0.5px solid rgba(0,0,0,0.18)', borderRadius: 6, cursor: 'pointer', color: '#5a6472' }}>
-                    Edit
-                  </button>
-                  {isAdmin && (
-                    <>
-                      <button type="button" onClick={() => handleArchive(t.id)} disabled={deletingId === t.id}
-                        title="Hide from library (recoverable by dev)"
-                        style={{ height: 30, padding: '0 12px', fontSize: 12, background: 'transparent', border: '0.5px solid rgba(0,0,0,0.18)', borderRadius: 6, cursor: 'pointer', color: '#5a6472', opacity: deletingId === t.id ? 0.5 : 1 }}>
-                        Archive
-                      </button>
-                      <button type="button" onClick={() => handleHardDelete(t.id, t.name)} disabled={deletingId === t.id}
-                        title="Permanently delete — cannot be undone"
-                        style={{ height: 30, padding: '0 12px', fontSize: 12, background: 'transparent', border: '0.5px solid rgba(148,48,48,0.3)', borderRadius: 6, cursor: 'pointer', color: '#943030', opacity: deletingId === t.id ? 0.5 : 1 }}>
-                        Delete
-                      </button>
-                    </>
-                  )}
-                </div>
-              )}
-            </div>
-          ))
+          <div style={{ maxWidth: 1100, margin: '0 auto', background: '#fff', boxShadow: '0 1px 4px rgba(0,0,0,0.08)', borderRadius: 2, padding: '48px 72px', minHeight: 600 }}>
+            <style>{`
+              .ProseMirror { outline: none; font-size: ${sizes.p}px; line-height: 1.8; color: #1a1f24; min-height: 500px; }
+              .ProseMirror p { margin: 0 0 10px; }
+              .ProseMirror h1 { font-family: 'Cormorant Garamond', serif; font-size: ${sizes.h1}px; font-weight: 700; margin: 24px 0 10px; padding-bottom: 6px; border-bottom: 1px solid #e0ddd8; }
+              .ProseMirror h2 { font-family: 'Cormorant Garamond', serif; font-size: ${sizes.h2}px; font-weight: 600; margin: 20px 0 8px; }
+              .ProseMirror h3 { font-size: ${sizes.h3}px; font-weight: 600; margin: 16px 0 6px; }
+              .ProseMirror h4 { font-size: ${sizes.h4}px; font-weight: 600; margin: 12px 0 4px; color: #5a6472; }
+              .ProseMirror ul { list-style-type: disc !important; padding-left: 22px; margin: 6px 0 10px; }
+              .ProseMirror ol { list-style-type: decimal !important; padding-left: 22px; margin: 6px 0 10px; }
+              .ProseMirror li { margin-bottom: 3px; }
+              .ProseMirror li p { margin: 0; display: inline; }
+              .ProseMirror table { border-collapse: collapse; width: 100%; margin: 14px 0; }
+              .ProseMirror th { background: #f5f2ee; padding: 7px 11px; border: 1px solid #d8d4ce; font-weight: 600; font-size: ${sizes.p}px; }
+              .ProseMirror td { padding: 7px 11px; border: 1px solid #d8d4ce; vertical-align: top; font-size: ${sizes.p}px; }
+              .ProseMirror tr:nth-child(even) td { background: #faf9f7; }
+              .ProseMirror .selectedCell { background: rgba(24,95,165,0.08) !important; }
+              .ProseMirror p.is-editor-empty:first-child::before { content: attr(data-placeholder); float: left; color: #8a96a2; pointer-events: none; height: 0; font-style: italic; }
+              .ProseMirror img { max-width: 100%; height: auto; border-radius: 4px; margin: 8px 0; }
+              .column-resize-handle { background-color: #185FA5; bottom: -2px; position: absolute; right: -2px; top: 0; width: 4px; pointer-events: none; }
+            `}</style>
+            <EditorContent editor={editor} />
+          </div>
         )}
       </div>
-
-      {showImport && (
-        <ImportModal defaultLevel={activeLevel} onClose={() => setShowImport(false)}
-          onImported={(t) => { if (t.level === activeLevel) setTemplates(prev => [...prev, t]); setShowImport(false) }} />
-      )}
-
-      {editingTemplate && (
-        <TemplateEditorModal template={editingTemplate} onClose={() => setEditingTemplate(null)}
-          onSaved={(updated) => { setTemplates(prev => prev.map(t => t.id === updated.id ? { ...t, ...updated } : t)); setEditingTemplate(null) }} />
-      )}
     </div>
   )
 }

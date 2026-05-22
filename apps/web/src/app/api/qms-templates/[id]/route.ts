@@ -54,9 +54,18 @@ export async function DELETE(req: NextRequest, { params }: Params) {
   if (session.role !== 'admin')
     return NextResponse.json({ error: 'Only admin can delete templates' }, { status: 403 })
 
+  // ?hard=true → permanent delete (admin only, for mistakes)
+  // default    → archive (soft delete, preserves history)
+  const hard = new URL(req.url).searchParams.get('hard') === 'true'
+
+  if (hard) {
+    await query(`DELETE FROM qms_templates WHERE id = $1::uuid`, [params.id])
+    return NextResponse.json({ ok: true, deleted: true })
+  }
+
   await query(
     `UPDATE qms_templates SET status = 'archived', updated_at = NOW() WHERE id = $1::uuid`,
     [params.id]
   )
-  return NextResponse.json({ ok: true })
+  return NextResponse.json({ ok: true, archived: true })
 }
