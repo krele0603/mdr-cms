@@ -618,8 +618,27 @@ export default function EqmsDocumentEditor() {
 
   function insertToc() {
     if (!editor || tocItems.length === 0) return
-    const lines = tocItems.map(item => `<li>${item.textContent}</li>`).join('')
-    editor.chain().focus().insertContent(`<div class="toc-block"><h4>Table of Contents</h4><ol>${lines}</ol></div>`).run()
+    const minLevel = Math.min(...tocItems.map((i: any) => i.level))
+    const counters = [0, 0, 0, 0, 0]
+    let lastDepth = -1
+    const lines = tocItems.map((item: any) => {
+      const depth = item.level - minLevel
+      if (depth < lastDepth) {
+        for (let i = depth + 1; i < counters.length; i++) counters[i] = 0
+      } else if (depth > lastDepth) {
+        counters[depth] = 0
+      }
+      lastDepth = depth
+      counters[depth]++
+      const number = counters.slice(0, depth + 1).join('.')
+      const cleanText = item.textContent.replace(/^[\d]+[\d.]*\s+/, '').trim() || item.textContent
+      const indent = depth * 20
+      const fontSize = depth === 0 ? 13 : depth === 1 ? 12 : 11
+      const color = depth === 0 ? '#1a1f24' : depth === 1 ? '#2e3640' : '#5a6472'
+      const fontWeight = depth === 0 ? 600 : 400
+      return `<p style="margin:3px 0;padding-left:${indent}px;font-size:${fontSize}px;color:${color};font-weight:${fontWeight}">${number}. ${cleanText}</p>`
+    }).join('')
+    editor.chain().focus().insertContent(`<div class="toc-block"><h4>Table of Contents</h4>${lines}</div>`).run()
   }
 
   const meta = doc ? LEVEL_META[doc.level] : null
