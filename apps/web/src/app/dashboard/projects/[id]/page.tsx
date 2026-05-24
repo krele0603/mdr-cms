@@ -9,6 +9,7 @@ const ANNEXES = ['Annex I','Annex II','Annex III','Annex IV','Annex V',
 
 const DOC_STATUS: Record<string, {bg:string;color:string;border:string;label:string}> = {
   superseded: { bg: 'rgba(90,100,114,0.08)', color: '#8a96a2', border: 'rgba(90,100,114,0.2)', label: 'Superseded' },
+  obsolete:   { bg: 'rgba(148,48,48,0.07)',   color: '#943030', border: 'rgba(148,48,48,0.2)',  label: 'Obsolete' },
   draft:      {bg:'#F1EFE8',color:'#5F5E5A',border:'#D3D1C7',label:'Draft'},
   inprogress: {bg:'#FAEEDA',color:'#633806',border:'#FAC775',label:'In progress'},
   review:     {bg:'#E6F1FB',color:'#0C447C',border:'#85B7EB',label:'In review'},
@@ -272,11 +273,13 @@ export default function ProjectDetailPage() {
   const isClient = sessionRole === 'client'
   const annexDocs = docs.filter((d: any) => d.annex === activeAnnex)
   const annexCounts = ANNEXES.reduce((acc, a) => ({ ...acc, [a]: docs.filter((d:any) => d.annex === a).length }), {} as Record<string,number>)
-  const stedDoc = docs.find((d: any) => d.annex === 'STED')
+  const stedDoc = docs.find((d: any) => d.annex === 'STED' && d.status === 'approved')
+  const stedDraft = docs.find((d: any) => d.annex === 'STED' && !['approved','superseded','obsolete'].includes(d.status))
+  const stedDisplay = stedDraft || stedDoc  // primary display doc
   const nonStedDocs = docs.filter((d: any) => d.annex !== 'STED')
   const allAnnexesApproved = nonStedDocs.length > 0 && nonStedDocs.every((d: any) => d.status === 'approved')
-  const tfApproved = stedDoc?.status === 'approved'
-  const readyForTfApproval = allAnnexesApproved && stedDoc?.status === 'review'
+  const tfApproved = stedDoc != null  // stedDoc is already filtered to approved
+  const readyForTfApproval = allAnnexesApproved && (stedDraft?.status === 'review')
   const tfStatus = tfApproved ? 'approved' : readyForTfApproval ? 'ready' : 'inprogress'
   const total = docs.length
   const approved = docs.filter((d:any) => d.status === 'approved').length
@@ -318,15 +321,36 @@ export default function ProjectDetailPage() {
             <div style={{display:'flex',alignItems:'center',gap:7,flexWrap:'wrap' as const,marginTop:8}}>
               <span style={{fontSize:11,padding:'2px 8px',borderRadius:4,background:'#E6F1FB',color:'#0C447C',border:'0.5px solid #85B7EB'}}>{project.list_name}</span>
               <span style={{fontSize:11,padding:'2px 8px',borderRadius:20,background:ps.bg,color:ps.color,border:`0.5px solid ${ps.border}`}}>{ps.label}</span>
-              {tfApproved && latestRevision && (
-                <span style={{fontSize:11,padding:'2px 8px',borderRadius:20,background:'#EAF3DE',color:'#27500A',border:'0.5px solid #97C459',fontWeight:600}}>
-                  ✓ TF v{latestRevision.version}
-                </span>
-              )}
+              {latestRevision && (() => {
+                // A TF has been approved. Check if any non-superseded, non-STED doc is not approved.
+                const activeDocs = nonStedDocs.filter((d: any) => !['superseded','obsolete'].includes(d.status))
+                const revisionInProgress = activeDocs.some((d: any) => d.status !== 'approved')
+                return (
+                  <span style={{display:'inline-flex',alignItems:'center',gap:0,borderRadius:20,overflow:'hidden',border:'0.5px solid #97C459',fontSize:11,fontWeight:600}}>
+                    <span style={{padding:'2px 9px',background:'#EAF3DE',color:'#27500A'}}>
+                      ✓ TF v{latestRevision.version}
+                    </span>
+                    {revisionInProgress && (
+                      <>
+                        <span style={{width:1,background:'rgba(46,96,50,0.25)',alignSelf:'stretch'}}/>
+                        <span style={{padding:'2px 9px',background:'#FFFBCC',color:'#7A6500',fontWeight:500}}>
+                          revision in progress
+                        </span>
+                      </>
+                    )}
+                  </span>
+                )
+              })()}
               {readyForTfApproval && (
                 <span style={{fontSize:11,padding:'2px 8px',borderRadius:20,background:'rgba(58,122,90,0.15)',color:'#3a7a5a',border:'0.5px solid rgba(58,122,90,0.4)',fontWeight:500}}>
                   ⬤ Ready for TF approval
                 </span>
+              )}
+              {latestRevision && (
+                <a href={`/dashboard/projects/${id}/tf-revisions`}
+                  style={{fontSize:11,padding:'2px 8px',borderRadius:20,background:'transparent',color:'#9b9991',border:'0.5px solid rgba(0,0,0,0.12)',textDecoration:'none'}}>
+                  Revision history
+                </a>
               )}
               <span style={{fontSize:11,color:'#9b9991'}}>{project.manufacturer_name}{project.manufacturer_country?` · ${project.manufacturer_country}`:''}</span>
             </div>
@@ -385,26 +409,35 @@ export default function ProjectDetailPage() {
       )}
 
       {/* STED — pinned above annexes */}
-      {stedDoc && (() => {
-        const s = DOC_STATUS[stedDoc.status] || DOC_STATUS.draft
-        const isApproved = stedDoc.status === 'approved'
-        const isReview = stedDoc.status === 'review'
+      {(stedDoc || stedDraft) && (() => {
+        const displayDoc = stedDraft || stedDoc!
+        const s = DOC_STATUS[displayDoc.status] || DOC_STATUS.draft
+        const hasBoth = stedDoc && stedDraft
         return (
-          <div style={{marginBottom:14,border:`1.5px solid ${isApproved ? '#97C459' : isReview ? '#FAC775' : 'rgba(0,0,0,0.12)'}`,borderRadius:12,overflow:'hidden',background:isApproved?'#F4FAE8':isReview?'#FFFBF5':'#fff'}}>
+          <div style={{marginBottom:14,border:`1.5px solid ${stedDoc && !stedDraft ? '#97C459' : stedDraft?.status === 'review' ? '#FAC775' : 'rgba(0,0,0,0.12)'}`,borderRadius:12,overflow:'hidden',background: stedDoc && !stedDraft ? '#F4FAE8' : stedDraft?.status === 'review' ? '#FFFBF5' : '#fff'}}>
             <div style={{padding:'10px 16px',display:'flex',alignItems:'center',gap:12}}>
               <div style={{width:38,height:38,borderRadius:8,flexShrink:0,background:'#FFF3CD',color:'#856404',border:'0.5px solid #FFEEBA',display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:700,textAlign:'center' as const,lineHeight:1.2}}>STED</div>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{fontSize:13,fontWeight:600,color:'#1a1f24',marginBottom:2}}>Summary of Technical Documentation</div>
                 <div style={{display:'flex',alignItems:'center',gap:6}}>
-                  <span style={{fontSize:10,color:'#9b9991',fontFamily:'monospace'}}>{stedDoc.code}</span>
-                  <span style={{fontSize:10,padding:'1px 6px',borderRadius:3,background:s.bg,color:s.color,border:`0.5px solid ${s.border}`,fontWeight:500}}>{s.label}</span>
-                  {isApproved && <span style={{fontSize:10,color:'#3B6D11',fontWeight:500}}>✓ TF Approved</span>}
+                  <span style={{fontSize:10,color:'#9b9991',fontFamily:'monospace'}}>{displayDoc.code}</span>
+                  {stedDoc && !stedDraft && <span style={{fontSize:10,padding:'1px 6px',borderRadius:3,background:'#EAF3DE',color:'#27500A',border:'0.5px solid #97C459',fontWeight:500}}>✓ TF Approved</span>}
+                  {stedDraft && <span style={{fontSize:10,padding:'1px 6px',borderRadius:3,background:s.bg,color:s.color,border:`0.5px solid ${s.border}`,fontWeight:500}}>{s.label}</span>}
+                  {hasBoth && <span style={{fontSize:10,color:'#856404',fontWeight:500}}>· approved version also available</span>}
                 </div>
               </div>
-              <button onClick={() => router.push(`/dashboard/projects/${id}/documents/${stedDoc.id}`)}
-                style={{height:30,padding:'0 14px',fontSize:12,background:'#185FA5',border:'none',borderRadius:6,color:'#fff',cursor:'pointer',fontWeight:500,flexShrink:0}}>
-                {isApproved ? 'View' : 'Edit'} STED →
-              </button>
+              <div style={{display:'flex',gap:7,flexShrink:0}}>
+                {hasBoth && (
+                  <button onClick={() => router.push(`/dashboard/projects/${id}/documents/${stedDoc!.id}`)}
+                    style={{height:30,padding:'0 12px',fontSize:12,background:'transparent',border:'0.5px solid #97C459',borderRadius:6,color:'#27500A',cursor:'pointer',fontWeight:500}}>
+                    ✓ Approved
+                  </button>
+                )}
+                <button onClick={() => router.push(`/dashboard/projects/${id}/documents/${stedDraft ? stedDraft.id : stedDoc!.id}`)}
+                  style={{height:30,padding:'0 14px',fontSize:12,background:'#185FA5',border:'none',borderRadius:6,color:'#fff',cursor:'pointer',fontWeight:500}}>
+                  {stedDraft ? (stedDraft.status === 'review' ? '⏳ In review' : '✎ Edit draft') : 'View STED'} →
+                </button>
+              </div>
             </div>
           </div>
         )
@@ -451,39 +484,62 @@ export default function ProjectDetailPage() {
             <div style={{padding:36,textAlign:'center',color:'#9b9991',fontSize:13}}>
               No documents in {activeAnnex}.{editMode?' Click "Add document" to add one.':''}
             </div>
-          ) : annexDocs.map((d:any) => {
-            const s = DOC_STATUS[d.status] || DOC_STATUS.draft
-            const isReview = d.status === 'review'
-            return (
-              <div key={d.id} style={{padding:'11px 14px',borderBottom:'0.5px solid rgba(0,0,0,0.06)',display:'flex',alignItems:'center',gap:10,background:isReview?'#FFFBF5':'#fff'}}>
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:13,fontWeight:500,whiteSpace:'nowrap' as const,overflow:'hidden',textOverflow:'ellipsis'}}>{d.name}</div>
-                  <div style={{display:'flex',alignItems:'center',gap:6,marginTop:3}}>
-                    <span style={{fontSize:11,color:'#9b9991',fontFamily:'monospace'}}>{d.code}</span>
-                    {!editMode && <span style={{fontSize:10,padding:'1px 6px',borderRadius:3,background:s.bg,color:s.color,border:`0.5px solid ${s.border}`,fontWeight:500}}>{isReview ? '⏳ ' : ''}{s.label}</span>}
+          ) : (() => {
+            // Group by name+code — show one row per document with approved+draft slots
+            const groups: Record<string, {approved:any,draft:any}> = {}
+            for (const d of annexDocs) {
+              const key = `${d.code}||${d.name}`
+              if (!groups[key]) groups[key] = { approved: null, draft: null }
+              if (d.status === 'approved') groups[key].approved = d
+              else groups[key].draft = d
+            }
+            return Object.values(groups).map((g) => {
+              const primary = g.draft || g.approved
+              const s = DOC_STATUS[primary.status] || DOC_STATUS.draft
+              const isReview = primary.status === 'review'
+              const hasBoth = g.approved && g.draft
+              return (
+                <div key={primary.id} style={{padding:'11px 14px',borderBottom:'0.5px solid rgba(0,0,0,0.06)',display:'flex',alignItems:'center',gap:10,background:isReview?'#FFFBF5':'#fff'}}>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:13,fontWeight:500,whiteSpace:'nowrap' as const,overflow:'hidden',textOverflow:'ellipsis'}}>{primary.name}</div>
+                    <div style={{display:'flex',alignItems:'center',gap:6,marginTop:3}}>
+                      <span style={{fontSize:11,color:'#9b9991',fontFamily:'monospace'}}>{primary.code}</span>
+                      {!editMode && (
+                        <>
+                          {g.approved && <span style={{fontSize:10,padding:'1px 6px',borderRadius:3,background:'#EAF3DE',color:'#27500A',border:'0.5px solid #97C459',fontWeight:500}}>✓ rev.{g.approved.revision||1}</span>}
+                          {g.draft && <span style={{fontSize:10,padding:'1px 6px',borderRadius:3,background:s.bg,color:s.color,border:`0.5px solid ${s.border}`,fontWeight:500}}>{isReview?'⏳ ':''}{s.label} rev.{g.draft.revision||1}</span>}
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  <div style={{display:'flex',alignItems:'center',gap:6,flexShrink:0}}>
+                    {editMode ? (
+                      <select value={primary.status} onChange={e => updateDocStatus(primary.id, e.target.value)}
+                        style={{height:26,padding:'0 6px',fontSize:11,border:'0.5px solid rgba(0,0,0,0.2)',borderRadius:6,background:'#fff'}}>
+                        <option value="draft">Draft</option>
+                        <option value="inprogress">In progress</option>
+                        <option value="review">In review</option>
+                        <option value="approved">Approved</option>
+                      </select>
+                    ) : null}
+                    {hasBoth && (
+                      <Link href={`/dashboard/projects/${id}/documents/${g.approved.id}`}
+                        style={{height:26,padding:'0 10px',fontSize:11,background:'transparent',border:'0.5px solid #97C459',borderRadius:6,color:'#27500A',textDecoration:'none',display:'inline-flex',alignItems:'center'}}>
+                        Approved
+                      </Link>
+                    )}
+                    <Link href={`/dashboard/projects/${id}/documents/${g.draft ? g.draft.id : g.approved.id}`}
+                      style={{height:26,padding:'0 10px',fontSize:11,background:'#E6F1FB',border:'0.5px solid #85B7EB',borderRadius:6,color:'#185FA5',textDecoration:'none',display:'inline-flex',alignItems:'center'}}>
+                      {g.draft ? 'Edit' : 'Open'}
+                    </Link>
+                    {sessionRole === 'admin' && !g.draft && (
+                      <button onClick={() => deleteDoc(g.approved.id, g.approved.name)} style={{height:26,padding:'0 8px',fontSize:11,background:'#FCEBEB',border:'0.5px solid #F09595',borderRadius:6,color:'#A32D2D',cursor:'pointer'}}>Delete</button>
+                    )}
                   </div>
                 </div>
-                <div style={{display:'flex',alignItems:'center',gap:6,flexShrink:0}}>
-                  {editMode ? (
-                    <select value={d.status} onChange={e => updateDocStatus(d.id, e.target.value)}
-                      style={{height:26,padding:'0 6px',fontSize:11,border:'0.5px solid rgba(0,0,0,0.2)',borderRadius:6,background:'#fff'}}>
-                      <option value="draft">Draft</option>
-                      <option value="inprogress">In progress</option>
-                      <option value="review">In review</option>
-                      <option value="approved">Approved</option>
-                    </select>
-                  ) : null}
-
-                  <Link href={`/dashboard/projects/${id}/documents/${d.id}`} style={{height:26,padding:'0 10px',fontSize:11,background:'#E6F1FB',border:'0.5px solid #85B7EB',borderRadius:6,color:'#185FA5',textDecoration:'none',display:'inline-flex',alignItems:'center'}}>
-                    Open
-                  </Link>
-                  {sessionRole === 'admin' && (
-                    <button onClick={() => deleteDoc(d.id, d.name)} style={{height:26,padding:'0 8px',fontSize:11,background:'#FCEBEB',border:'0.5px solid #F09595',borderRadius:6,color:'#A32D2D',cursor:'pointer'}}>Delete</button>
-                  )}
-                </div>
-              </div>
-            )
-          })}
+              )
+            })
+          })()}
 
           {/* Uploaded files for active annex */}
           {(allProjectFiles.filter((f: any) => f.annex === activeAnnex)).map((f: any) => (

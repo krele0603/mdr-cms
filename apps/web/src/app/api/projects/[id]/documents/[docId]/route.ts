@@ -47,6 +47,20 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
   const body = await req.json()
 
+  // STED approval must go through /approve-sted — never allow direct status patch to 'approved'
+  if (body.status === 'approved') {
+    const doc = await queryOne(
+      `SELECT annex FROM project_documents WHERE id = $1::uuid AND project_id = $2::uuid`,
+      [params.docId, params.id]
+    )
+    if (doc?.annex === 'STED') {
+      return NextResponse.json(
+        { error: 'STED approval requires using the Approve TF flow (POST /approve-sted)' },
+        { status: 400 }
+      )
+    }
+  }
+
   const setClauses: string[] = ['updated_at = NOW()']
   const vals: any[] = []
   let i = 1

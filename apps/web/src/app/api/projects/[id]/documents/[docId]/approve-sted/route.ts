@@ -51,15 +51,18 @@ export async function POST(req: NextRequest, { params }: Params) {
   if (stedDoc.annex !== 'STED') return NextResponse.json({ error: 'This endpoint is only for STED documents' }, { status: 400 })
   if (stedDoc.status !== 'review') return NextResponse.json({ error: 'STED must be in review to approve' }, { status: 400 })
 
-  // Check ALL non-STED documents in project are approved — hard block
+  // Check all ACTIVE non-STED documents are approved — hard block
+  // Superseded and obsolete docs are excluded (they are historical, not active)
   const unapproved = await query(
     `SELECT id, annex, name, status FROM project_documents
-     WHERE project_id = $1::uuid AND annex != 'STED' AND status != 'approved'`,
+     WHERE project_id = $1::uuid
+       AND annex != 'STED'
+       AND status NOT IN ('approved', 'superseded', 'obsolete')`,
     [projectId]
   )
   if (unapproved.length > 0) {
     return NextResponse.json({
-      error: `Cannot approve STED: ${unapproved.length} document(s) are not yet approved`,
+      error: `Cannot approve TF: ${unapproved.length} document(s) are not yet approved`,
       unapproved_docs: unapproved.map((d: any) => ({ annex: d.annex, name: d.name, status: d.status }))
     }, { status: 400 })
   }

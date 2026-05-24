@@ -16,16 +16,19 @@ const ROLE_STYLES: Record<string, { bg: string; color: string; border: string }>
 const tfbuilderItems = [
   { label: 'Projects', href: '/dashboard/projects', roles: ['admin', 'consultant'],
     icon: <svg style={{width:15,height:15,stroke:'currentColor',fill:'none',strokeWidth:1.5,strokeLinecap:'round' as const,strokeLinejoin:'round' as const}} viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg> },
-  { label: 'Template library', href: '/dashboard/templates', roles: ['admin'],
+  { label: 'Audit Trail', href: '/dashboard/audit', roles: ['admin'],
+    icon: <svg style={{width:15,height:15,stroke:'currentColor',fill:'none',strokeWidth:1.5,strokeLinecap:'round' as const,strokeLinejoin:'round' as const}} viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg> },
+  { label: 'Users', href: '/dashboard/users', roles: ['admin'],
+    icon: <svg style={{width:15,height:15,stroke:'currentColor',fill:'none',strokeWidth:1.5,strokeLinecap:'round' as const,strokeLinejoin:'round' as const}} viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> },
+]
+
+const toolItems = [
+  { label: 'TF Template library', href: '/dashboard/templates', roles: ['admin'],
     icon: <svg style={{width:15,height:15,stroke:'currentColor',fill:'none',strokeWidth:1.5,strokeLinecap:'round' as const,strokeLinejoin:'round' as const}} viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg> },
   { label: 'TF Structures', href: '/dashboard/lists', roles: ['admin'],
     icon: <svg style={{width:15,height:15,stroke:'currentColor',fill:'none',strokeWidth:1.5,strokeLinecap:'round' as const,strokeLinejoin:'round' as const}} viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg> },
   { label: 'QMS Templates', href: '/dashboard/qms-templates', roles: ['admin', 'consultant'],
     icon: <svg style={{width:15,height:15,stroke:'currentColor',fill:'none',strokeWidth:1.5,strokeLinecap:'round' as const,strokeLinejoin:'round' as const}} viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="12" y1="9" x2="8" y2="9"/></svg> },
-  { label: 'Audit Trail', href: '/dashboard/audit', roles: ['admin'],
-    icon: <svg style={{width:15,height:15,stroke:'currentColor',fill:'none',strokeWidth:1.5,strokeLinecap:'round' as const,strokeLinejoin:'round' as const}} viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg> },
-  { label: 'Users', href: '/dashboard/users', roles: ['admin'],
-    icon: <svg style={{width:15,height:15,stroke:'currentColor',fill:'none',strokeWidth:1.5,strokeLinecap:'round' as const,strokeLinejoin:'round' as const}} viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> },
 ]
 
 // Companies link for admin/consultant
@@ -57,6 +60,7 @@ export default function DashboardNav({ user }: Props) {
   const router = useRouter()
   const roleStyle = ROLE_STYLES[user.role] || ROLE_STYLES.client
   const visibleTFItems = tfbuilderItems.filter(i => i.roles.includes(user.role))
+  const visibleToolItems = toolItems.filter(i => i.roles.includes(user.role))
   const visibleEQMSItems = eqmsItems.filter(i => i.roles.includes(user.role))
   const showCompanies = ['admin', 'consultant', 'client', 'client-MR'].includes(user.role)
   const initials = user.name.split(' ').filter(Boolean).map(n => n[0]).join('').toUpperCase().slice(0, 2)
@@ -237,8 +241,19 @@ export default function DashboardNav({ user }: Props) {
   function NavItem({ href, label, icon }: { href: string; label: string; icon: React.ReactNode }) {
     const active = pathname.startsWith(href)
     return (
-      <Link href={href} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '8px 12px', borderRadius: 8, fontSize: 13, fontWeight: active ? 500 : 400, color: active ? '#4e8c8c' : 'rgba(255,255,255,0.55)', background: active ? 'rgba(78,140,140,0.15)' : 'transparent', textDecoration: 'none', marginBottom: 2 }}>
-        {icon}{label}
+      <Link href={href} style={{
+        display: 'flex', alignItems: 'center', gap: 9, padding: '7px 12px',
+        borderRadius: 7, fontSize: 13, fontWeight: active ? 500 : 400,
+        color: active ? '#fff' : 'rgba(255,255,255,0.5)',
+        background: active ? 'rgba(78,140,140,0.3)' : 'transparent',
+        textDecoration: 'none', marginBottom: 1,
+        borderLeft: active ? '2px solid #4e8c8c' : '2px solid transparent',
+        transition: 'background 0.15s, color 0.15s',
+      }}
+        onMouseEnter={e => { if (!active) { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.06)'; (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.8)' } }}
+        onMouseLeave={e => { if (!active) { (e.currentTarget as HTMLElement).style.background = 'transparent'; (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.5)' } }}
+      >
+        <span style={{ color: active ? '#4e8c8c' : 'inherit', display: 'flex' }}>{icon}</span>{label}
       </Link>
     )
   }
@@ -472,6 +487,12 @@ export default function DashboardNav({ user }: Props) {
                 <>
                   <div style={{ fontSize: 10, fontWeight: 600, color: 'rgba(255,255,255,0.25)', letterSpacing: '0.08em', textTransform: 'uppercase' as const, padding: '12px 12px 6px' }}>TFBuilder</div>
                   {visibleTFItems.map(item => <NavItem key={item.href} {...item} />)}
+                </>
+              )}
+              {visibleToolItems.length > 0 && (
+                <>
+                  <div style={{ fontSize: 10, fontWeight: 600, color: 'rgba(255,255,255,0.25)', letterSpacing: '0.08em', textTransform: 'uppercase' as const, padding: '12px 12px 6px' }}>Tools</div>
+                  {visibleToolItems.map(item => <NavItem key={item.href} {...item} />)}
                 </>
               )}
             </>

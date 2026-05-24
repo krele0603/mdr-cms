@@ -36,6 +36,7 @@ export async function GET(
     FROM project_documents pd
     LEFT JOIN users u ON u.id = pd.assigned_to
     WHERE pd.project_id = $1::uuid
+      AND pd.status NOT IN ('superseded', 'obsolete')
     ORDER BY pd.annex, pd.name
   `, [params.id])
 
@@ -92,7 +93,19 @@ export async function DELETE(
   )
   if (!project) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  await query(`DELETE FROM projects WHERE id = $1::uuid`, [params.id])
-  await auditLog(session.id, 'project', params.id, 'deleted', { name: project.name })
-  return NextResponse.json({ ok: true })
+  try {
+    await query(`DELETE FROM projects WHERE id = $1::uuid`, [params.id])
+    await auditLog(session.id, 'project', params.id, 'deleted', { name: project.name })
+    return NextResponse.json({ ok: true })
+  } catch (err: any) {
+    console.error('Project delete error:', err)
+    // FK violation — dependent rows exist without CASCADE
+    if (err.code === '23503') {
+      return NextResponse.json(
+        { error: 'Cannot delete: project has related records. Run migration 008_cascade_project_delete.sql first.' },
+        { status: 409 }
+      )
+    }
+    return NextResponse.json({ error: err.message || 'Delete failed' }, { status: 500 })
+  }
 }

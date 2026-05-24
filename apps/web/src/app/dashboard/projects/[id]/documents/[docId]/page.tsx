@@ -75,6 +75,7 @@ const DOC_STATUS: Record<string, { bg: string; color: string; border: string; la
   review:     { bg: 'rgba(78,140,140,0.1)',   color: '#2e5f5f', border: 'rgba(78,140,140,0.3)',  label: 'In review' },
   approved:   { bg: 'rgba(58,122,90,0.1)',    color: '#3a7a5a', border: 'rgba(58,122,90,0.3)',   label: 'Approved' },
   superseded: { bg: 'rgba(90,100,114,0.08)',  color: '#8a96a2', border: 'rgba(90,100,114,0.2)', label: 'Superseded' },
+  obsolete:   { bg: 'rgba(148,48,48,0.07)',   color: '#943030', border: 'rgba(148,48,48,0.2)',  label: 'Obsolete (refused draft)' },
 }
 
 const DEFAULT_SIZES = { p: 14, h1: 26, h2: 20, h3: 15, h4: 14 }
@@ -900,6 +901,12 @@ export default function DocumentEditorPage() {
   const [exporting, setExporting] = useState(false)
   const [approving, setApproving] = useState(false)
   const [revising, setRevising] = useState(false)
+  const [reverting, setReverting] = useState(false)
+  const [latestRevision, setLatestRevision] = useState<any>(null)
+  const [allRevisions, setAllRevisions] = useState<any[]>([])
+  const [showRevisionDropdown, setShowRevisionDropdown] = useState(false)
+  const [docRevisions, setDocRevisions] = useState<any[]>([])
+  const [showRevPill, setShowRevPill] = useState(false)
   const [wordCount, setWordCount] = useState(0)
   const [sizes, setSizes] = useState(DEFAULT_SIZES)
   const [zoom, setZoom] = useState(100)
@@ -974,6 +981,18 @@ export default function DocumentEditorPage() {
   }, [projectId, docId])
 
   useEffect(() => {
+    fetch(`/api/projects/${projectId}/tf-revision`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) setLatestRevision(d) })
+    fetch(`/api/projects/${projectId}/tf-revision?all=1`)
+      .then(r => r.ok ? r.json() : [])
+      .then(d => { if (Array.isArray(d)) setAllRevisions(d) })
+    fetch(`/api/projects/${projectId}/documents/${docId}/revisions`)
+      .then(r => r.ok ? r.json() : [])
+      .then(d => { if (Array.isArray(d)) setDocRevisions(d) })
+    fetch(`/api/projects/${projectId}/documents/${docId}/history`)
+      .then(r => r.ok ? r.json() : [])
+      .then(d => { if (Array.isArray(d)) setHistory(d) })
     fetch(`/api/projects/${projectId}/members`).then(r => r.ok ? r.json() : []).then(setMembers)
     fetch(`/api/projects/${projectId}/variables`).then(r => r.ok ? r.json() : null).then(data => {
       if (data?.variables) {
@@ -1152,6 +1171,11 @@ export default function DocumentEditorPage() {
   }, [projectId, docId])
 
   async function updateStatus(status: string) {
+    // STED must go through the TF approval modal — never set approved directly
+    if (status === 'approved' && doc?.annex === 'STED') {
+      setShowStedApprove(true)
+      return
+    }
     setDocStatus(status)
     await fetch(`/api/projects/${projectId}/documents/${docId}`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
@@ -1223,12 +1247,26 @@ export default function DocumentEditorPage() {
   }
 
   async function reviseDoc() {
-    if (!confirm('Create a new revision? The approved version will be preserved.')) return
+    const msg = latestRevision
+      ? `Reopen this document for editing?\n\nThe TF v${latestRevision.version} snapshot is preserved. Other approved documents stay locked — only this one will be set to Draft. Once it\'s re-approved you can update and re-approve the STED to issue a new TF version.`
+      : 'Create a new revision? The approved version will be preserved.'
+    if (!confirm(msg)) return
     setRevising(true)
     try {
       const res = await fetch(`/api/projects/${projectId}/documents/${docId}/revise`, { method: 'POST' })
       if (res.ok) { const d = await res.json(); router.push(`/dashboard/projects/${projectId}/documents/${d.id}`) }
     } finally { setRevising(false) }
+  }
+
+  async function revertDoc() {
+    if (!confirm(`Mark this draft as obsolete and restore the previous approved revision?\n\nThe draft content will be preserved as an "Obsolete (refused draft)" record — it can still be opened and read later.`)) return
+    setReverting(true)
+    try {
+      const res = await fetch(`/api/projects/${projectId}/documents/${docId}/revert`, { method: 'POST' })
+      const data = await res.json()
+      if (!res.ok) { alert(data.error || 'Revert failed'); return }
+      router.push(`/dashboard/projects/${projectId}/documents/${data.restored_id}`)
+    } finally { setReverting(false) }
   }
 
   async function exportDoc() {
@@ -1383,10 +1421,12 @@ export default function DocumentEditorPage() {
     contentLoaded.current = true
   }, [editor, doc])
 
-  // Set editor read-only for approved docs viewed by client
+  // Set editor read-only:
+  // - client: read-only when approved or obsolete
+  // - everyone else: always editable (superseded/obsolete docs can be opened and read/edited)
   useEffect(() => {
     if (!editor) return
-    const shouldBeReadOnly = (userRole === 'client') && docStatus === 'approved'
+    const shouldBeReadOnly = (userRole === 'client') && ['approved', 'obsolete'].includes(docStatus)
     editor.setEditable(!shouldBeReadOnly)
   }, [editor, userRole, docStatus])
 
@@ -1480,7 +1520,40 @@ export default function DocumentEditorPage() {
           <span>›</span>
           <Link href={backHref} style={{ color: '#8a96a2', textDecoration: 'none', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>{doc.project_name}</Link>
           <span>›</span>
-          <span style={{ color: '#1a1f24', fontWeight: 500, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>{doc.name}{doc.revision && doc.revision > 1 ? ` (rev.${doc.revision})` : ''}</span>
+          <span style={{ color: '#1a1f24', fontWeight: 500, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>{doc.name}</span>
+          {docRevisions.length > 0 && (() => {
+            const total = docRevisions.length
+            const currentIdx = docRevisions.findIndex((r:any) => r.id === docId)
+            const statusColors: Record<string,string> = { approved:'#27500A', draft:'#5a6472', inprogress:'#8a6020', review:'#0C447C', superseded:'#8a96a2', obsolete:'#943030' }
+            const statusLabels: Record<string,string> = { approved:'✓ Approved', draft:'Draft', inprogress:'In progress', review:'In review', superseded:'Superseded', obsolete:'Obsolete' }
+            return (
+              <div style={{ position: 'relative' }}>
+                <button onClick={() => setShowRevPill(v => !v)}
+                  style={{ height: 20, padding: '0 8px', fontSize: 11, background: '#f0ede8', border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 10, color: statusColors[docStatus] || '#5a6472', cursor: total > 1 ? 'pointer' : 'default', fontWeight: 500, display: 'flex', alignItems: 'center', gap: 3 }}>
+                  rev.{doc.revision || 1}{total > 1 ? ` of ${total}` : ''} · {statusLabels[docStatus] || docStatus}{total > 1 ? <span style={{fontSize:8,opacity:0.6}}>▼</span> : null}
+                </button>
+                {showRevPill && total > 1 && (
+                  <div style={{ position: 'absolute', top: 24, left: 0, background: '#fff', border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.12)', zIndex: 200, minWidth: 220, padding: '4px 0' }}
+                    onMouseLeave={() => setShowRevPill(false)}>
+                    <div style={{ padding: '5px 12px 3px', fontSize: 10, color: '#9b9991', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>All revisions</div>
+                    {[...docRevisions].reverse().map((r:any) => {
+                      const isCurrent = r.id === docId
+                      return (
+                        <a key={r.id} href={`/dashboard/projects/${projectId}/documents/${r.id}`}
+                          style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', textDecoration: 'none', background: isCurrent ? '#f0ede8' : 'transparent' }}
+                          onMouseEnter={e => { if (!isCurrent) e.currentTarget.style.background = '#f5f2ee' }}
+                          onMouseLeave={e => { if (!isCurrent) e.currentTarget.style.background = 'transparent' }}>
+                          <span style={{ fontSize: 12, fontFamily: 'monospace', fontWeight: isCurrent ? 600 : 400, color: '#2e3640', minWidth: 36 }}>rev.{r.revision || 1}</span>
+                          <span style={{ fontSize: 11, color: statusColors[r.status] || '#5a6472', flex: 1 }}>{statusLabels[r.status] || r.status}</span>
+                          {isCurrent && <span style={{ fontSize: 10, color: '#8a96a2' }}>← current</span>}
+                        </a>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )
+          })()}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
           <span style={{ fontSize: 11, color: saveState === 'saved' ? '#3a7a5a' : saveState === 'saving' ? '#8a6020' : saveState === 'error' ? '#943030' : '#8a96a2' }}>
@@ -1489,7 +1562,7 @@ export default function DocumentEditorPage() {
           <span style={{ fontSize: 11, padding: '3px 10px', borderRadius: 20, background: st.bg, color: st.color, border: `0.5px solid ${st.border}`, fontWeight: 500 }}>{st.label}</span>
           {(isAdmin || isConsultant) && (
             <select value={docStatus} onChange={e => updateStatus(e.target.value)} style={{ height: 28, padding: '0 8px', fontSize: 12, border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 6, background: '#fff', color: '#2e3640', cursor: 'pointer' }}>
-              <option value="draft">Draft</option><option value="inprogress">In progress</option><option value="review">In review</option><option value="approved">Approved</option>
+              <option value="draft">Draft</option><option value="inprogress">In progress</option><option value="review">In review</option>{doc?.annex !== 'STED' && <option value="approved">Approved</option>}
             </select>
           )}
           {isClient && !isApproved && !isReview && (
@@ -1509,8 +1582,11 @@ export default function DocumentEditorPage() {
               <button onClick={() => setShowRequestChanges(v => !v)} style={{ height: 28, padding: '0 12px', fontSize: 12, cursor: 'pointer', background: showRequestChanges ? 'rgba(148,48,48,0.1)' : 'transparent', border: '0.5px solid rgba(148,48,48,0.35)', borderRadius: 6, color: '#943030', fontWeight: 500 }}>Request changes</button>
             </>
           )}
-          {isAdmin && isApproved && (
-            <button onClick={reviseDoc} disabled={revising} style={{ height: 28, padding: '0 12px', fontSize: 12, cursor: 'pointer', background: 'transparent', border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 6, color: '#5a6472', opacity: revising ? 0.7 : 1 }}>{revising ? 'Creating…' : '↻ New revision'}</button>
+          {(isAdmin || isConsultant || isClientMR) && isApproved && (
+            <button onClick={reviseDoc} disabled={revising} style={{ height: 28, padding: '0 12px', fontSize: 12, cursor: 'pointer', background: 'transparent', border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 6, color: '#5a6472', opacity: revising ? 0.7 : 1 }}>{revising ? 'Opening…' : '↻ Revise'}</button>
+          )}
+          {(isAdmin || isConsultant || isClientMR) && ['draft','inprogress','review'].includes(docStatus) && doc?.revision && doc.revision > 1 && (
+            <button onClick={revertDoc} disabled={reverting} style={{ height: 28, padding: '0 12px', fontSize: 12, cursor: 'pointer', background: 'transparent', border: '0.5px solid rgba(148,48,48,0.35)', borderRadius: 6, color: '#943030', opacity: reverting ? 0.7 : 1 }}>{reverting ? 'Reverting…' : '⟲ Revert to approved'}</button>
           )}
           <button onClick={() => setShowComments(v => !v)} style={{ height: 28, padding: '0 10px', fontSize: 12, cursor: 'pointer', background: showComments ? 'rgba(200,169,110,0.12)' : 'transparent', border: showComments ? '0.5px solid rgba(200,169,110,0.4)' : '0.5px solid rgba(0,0,0,0.15)', borderRadius: 6, color: showComments ? '#8a6020' : '#5a6472', display: 'flex', alignItems: 'center', gap: 5 }}>
             <I.Comment />{openComments > 0 ? openComments : 'Comments'}
@@ -1586,9 +1662,56 @@ export default function DocumentEditorPage() {
           </div>
       </div>
 
-      {isClient && isApproved && (
-        <div style={{ padding: '8px 16px', flexShrink: 0, background: 'rgba(58,122,90,0.08)', borderBottom: '1px solid rgba(58,122,90,0.2)', fontSize: 12, color: '#3a7a5a' }}>
-          ✓ This record has been approved and is read-only.
+      {isApproved && (
+        <div style={{ padding: '6px 16px', flexShrink: 0, background: 'rgba(58,122,90,0.06)', borderBottom: '1px solid rgba(58,122,90,0.2)', fontSize: 12, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ color: '#3a7a5a', fontWeight: 500 }}>
+            ✓ Approved{doc?.revision && doc.revision > 1 ? ` · rev.${doc.revision}` : ''}
+          </span>
+          {latestRevision && (
+            <span style={{ color: '#6b6a64' }}>·</span>
+          )}
+          {latestRevision && allRevisions.length <= 1 && (
+            <span style={{ color: '#3a7a5a', fontWeight: 500 }}>
+              TF v{latestRevision.version}
+            </span>
+          )}
+          {latestRevision && allRevisions.length > 1 && (
+            <div style={{ position: 'relative' }}>
+              <button
+                onClick={() => setShowRevisionDropdown(v => !v)}
+                style={{ height: 20, padding: '0 8px', fontSize: 11, background: 'rgba(58,122,90,0.1)', border: '0.5px solid rgba(58,122,90,0.3)', borderRadius: 4, color: '#3a7a5a', cursor: 'pointer', fontWeight: 500, display: 'flex', alignItems: 'center', gap: 4 }}>
+                TF v{latestRevision.version} <span style={{ fontSize: 9, opacity: 0.7 }}>▼</span>
+              </button>
+              {showRevisionDropdown && (
+                <div style={{ position: 'absolute', top: 24, left: 0, background: '#fff', border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.12)', zIndex: 100, minWidth: 200, padding: '4px 0' }}
+                  onMouseLeave={() => setShowRevisionDropdown(false)}>
+                  <div style={{ padding: '6px 12px 4px', fontSize: 10, color: '#9b9991', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>TF revision history</div>
+                  {allRevisions.map((r: any, i: number) => (
+                    <a key={r.id}
+                      href={`/dashboard/projects/${projectId}/tf-revisions`}
+                      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', textDecoration: 'none', background: i === 0 ? 'rgba(58,122,90,0.05)' : 'transparent' }}
+                      onMouseEnter={e => (e.currentTarget.style.background = '#f5f2ee')}
+                      onMouseLeave={e => (e.currentTarget.style.background = i === 0 ? 'rgba(58,122,90,0.05)' : 'transparent')}>
+                      <span style={{ fontSize: 12, fontWeight: i === 0 ? 600 : 400, color: i === 0 ? '#27500A' : '#3a3a36', fontFamily: 'monospace' }}>v{r.version}</span>
+                      {i === 0 && <span style={{ fontSize: 10, color: '#6b9b3a', fontWeight: 500 }}>current</span>}
+                      <span style={{ fontSize: 11, color: '#9b9991', marginLeft: 'auto' }}>{new Date(r.approved_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: '2-digit' })}</span>
+                    </a>
+                  ))}
+                  <div style={{ borderTop: '0.5px solid rgba(0,0,0,0.08)', marginTop: 4, padding: '4px 0 2px' }}>
+                    <a href={`/dashboard/projects/${projectId}/tf-revisions`}
+                      style={{ display: 'block', padding: '5px 12px', fontSize: 11, color: '#5a6472', textDecoration: 'none' }}
+                      onMouseEnter={e => (e.currentTarget.style.background = '#f5f2ee')}
+                      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                      View full revision history →
+                    </a>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+          {doc?.annex === 'STED' && latestRevision && (
+            <span style={{ color: '#8a6020', fontSize: 11 }}>— update STED to issue a new TF version</span>
+          )}
         </div>
       )}
 
@@ -1799,6 +1922,8 @@ export default function DocumentEditorPage() {
           </div>
         </div>
       )}
+
+
     </div>
   )
 }
