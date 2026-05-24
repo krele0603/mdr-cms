@@ -160,6 +160,8 @@ export default function ProjectDetailPage() {
 
 
 
+  const [latestRevision, setLatestRevision] = useState<any>(null)
+
   async function load() {
     const res = await fetch(`/api/projects/${id}`)
     if (!res.ok) { router.push('/dashboard/projects'); return }
@@ -173,6 +175,8 @@ export default function ProjectDetailPage() {
       assigned_to: d.assigned_to || null, assigned_name: d.assigned_name || null,
     })))
     setLoading(false)
+    // Load latest TF revision
+    fetch(`/api/projects/${id}/tf-revision`).then(r => r.ok ? r.json() : null).then(d => { if (d) setLatestRevision(d) })
   }
 
   async function loadMembers() {
@@ -268,6 +272,12 @@ export default function ProjectDetailPage() {
   const isClient = sessionRole === 'client'
   const annexDocs = docs.filter((d: any) => d.annex === activeAnnex)
   const annexCounts = ANNEXES.reduce((acc, a) => ({ ...acc, [a]: docs.filter((d:any) => d.annex === a).length }), {} as Record<string,number>)
+  const stedDoc = docs.find((d: any) => d.annex === 'STED')
+  const nonStedDocs = docs.filter((d: any) => d.annex !== 'STED')
+  const allAnnexesApproved = nonStedDocs.length > 0 && nonStedDocs.every((d: any) => d.status === 'approved')
+  const tfApproved = stedDoc?.status === 'approved'
+  const readyForTfApproval = allAnnexesApproved && stedDoc?.status === 'review'
+  const tfStatus = tfApproved ? 'approved' : readyForTfApproval ? 'ready' : 'inprogress'
   const total = docs.length
   const approved = docs.filter((d:any) => d.status === 'approved').length
   const inprog = docs.filter((d:any) => d.status === 'inprogress' || d.status === 'review').length
@@ -300,7 +310,7 @@ export default function ProjectDetailPage() {
       </div>
 
       {/* Project header */}
-      <div style={{background:'#fff',border:'0.5px solid rgba(0,0,0,0.1)',borderRadius:12,padding:'16px 20px',marginBottom:14}}>
+      <div style={{background: tfApproved ? '#F4FAE8' : readyForTfApproval ? 'rgba(58,122,90,0.04)' : '#fff', border: tfApproved ? '1.5px solid #97C459' : readyForTfApproval ? '1.5px solid rgba(58,122,90,0.4)' : '0.5px solid rgba(0,0,0,0.1)', borderRadius:12,padding:'16px 20px',marginBottom:14}}>
         <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:12,marginBottom:12}}>
           <div>
             <div style={{fontSize:17,fontWeight:500,marginBottom:2}}>{project.name}</div>
@@ -308,6 +318,16 @@ export default function ProjectDetailPage() {
             <div style={{display:'flex',alignItems:'center',gap:7,flexWrap:'wrap' as const,marginTop:8}}>
               <span style={{fontSize:11,padding:'2px 8px',borderRadius:4,background:'#E6F1FB',color:'#0C447C',border:'0.5px solid #85B7EB'}}>{project.list_name}</span>
               <span style={{fontSize:11,padding:'2px 8px',borderRadius:20,background:ps.bg,color:ps.color,border:`0.5px solid ${ps.border}`}}>{ps.label}</span>
+              {tfApproved && latestRevision && (
+                <span style={{fontSize:11,padding:'2px 8px',borderRadius:20,background:'#EAF3DE',color:'#27500A',border:'0.5px solid #97C459',fontWeight:600}}>
+                  ✓ TF v{latestRevision.version}
+                </span>
+              )}
+              {readyForTfApproval && (
+                <span style={{fontSize:11,padding:'2px 8px',borderRadius:20,background:'rgba(58,122,90,0.15)',color:'#3a7a5a',border:'0.5px solid rgba(58,122,90,0.4)',fontWeight:500}}>
+                  ⬤ Ready for TF approval
+                </span>
+              )}
               <span style={{fontSize:11,color:'#9b9991'}}>{project.manufacturer_name}{project.manufacturer_country?` · ${project.manufacturer_country}`:''}</span>
             </div>
           </div>
@@ -363,6 +383,32 @@ export default function ProjectDetailPage() {
           </div>
         </div>
       )}
+
+      {/* STED — pinned above annexes */}
+      {stedDoc && (() => {
+        const s = DOC_STATUS[stedDoc.status] || DOC_STATUS.draft
+        const isApproved = stedDoc.status === 'approved'
+        const isReview = stedDoc.status === 'review'
+        return (
+          <div style={{marginBottom:14,border:`1.5px solid ${isApproved ? '#97C459' : isReview ? '#FAC775' : 'rgba(0,0,0,0.12)'}`,borderRadius:12,overflow:'hidden',background:isApproved?'#F4FAE8':isReview?'#FFFBF5':'#fff'}}>
+            <div style={{padding:'10px 16px',display:'flex',alignItems:'center',gap:12}}>
+              <div style={{width:38,height:38,borderRadius:8,flexShrink:0,background:'#FFF3CD',color:'#856404',border:'0.5px solid #FFEEBA',display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:700,textAlign:'center' as const,lineHeight:1.2}}>STED</div>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:13,fontWeight:600,color:'#1a1f24',marginBottom:2}}>Summary of Technical Documentation</div>
+                <div style={{display:'flex',alignItems:'center',gap:6}}>
+                  <span style={{fontSize:10,color:'#9b9991',fontFamily:'monospace'}}>{stedDoc.code}</span>
+                  <span style={{fontSize:10,padding:'1px 6px',borderRadius:3,background:s.bg,color:s.color,border:`0.5px solid ${s.border}`,fontWeight:500}}>{s.label}</span>
+                  {isApproved && <span style={{fontSize:10,color:'#3B6D11',fontWeight:500}}>✓ TF Approved</span>}
+                </div>
+              </div>
+              <button onClick={() => router.push(`/dashboard/projects/${id}/documents/${stedDoc.id}`)}
+                style={{height:30,padding:'0 14px',fontSize:12,background:'#185FA5',border:'none',borderRadius:6,color:'#fff',cursor:'pointer',fontWeight:500,flexShrink:0}}>
+                {isApproved ? 'View' : 'Edit'} STED →
+              </button>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* Annex + docs grid */}
       <div style={{display:'grid',gridTemplateColumns:'200px 1fr',gap:14,marginBottom:14}}>
