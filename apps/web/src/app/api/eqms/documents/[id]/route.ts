@@ -43,7 +43,16 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   const session = await getSession()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { title, code, content, change_note } = await req.json()
+  const { title, code, content, change_note, folder_id } = await req.json()
+
+  if (folder_id !== undefined) {
+    await query(
+      `UPDATE eqms_documents SET folder_id = $1::uuid, updated_at = now() WHERE id = $2::uuid`,
+      [folder_id, params.id]
+    )
+    await auditLog(session.id, 'eqms_document', params.id, 'moved_to_folder', { folder_id })
+    return NextResponse.json({ ok: true })
+  }
 
   if (title !== undefined || code !== undefined) {
     await query(

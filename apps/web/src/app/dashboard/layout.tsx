@@ -13,7 +13,7 @@ export default async function DashboardLayout({
   return (
     <div style={{ display: 'flex', minHeight: '100vh' }}>
       <DashboardNav user={user} />
-      <main style={{ flex: 1, overflow: 'auto', padding: 28 }}>
+      <main style={{ flex: 1, minWidth: 0, padding: '28px 32px' }}>
         {children}
       </main>
     </div>

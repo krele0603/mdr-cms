@@ -38,20 +38,25 @@ function buildTree(folders: Folder[], parentId: string | null = null): (Folder &
     .map(f => ({ ...f, children: buildTree(folders, f.id) }))
 }
 
-function FolderNode({ folder, depth, selected, onSelect, onRename, onDelete, onAddChild, canEdit }: {
+function FolderNode({ folder, depth, selected, onSelect, onRename, onDelete, onAddChild, canEdit, activeDragFolderId }: {
   folder: Folder & { children: any[] }; depth: number; selected: string | null
   onSelect: (id: string) => void; onRename: (id: string, name: string) => void
   onDelete: (id: string) => void; onAddChild: (parentId: string) => void; canEdit: boolean
+  activeDragFolderId?: string | null
 }) {
   const [expanded, setExpanded] = useState(true)
   const [hovering, setHovering] = useState(false)
   const [renaming, setRenaming] = useState(false)
   const [renameVal, setRenameVal] = useState(folder.name)
+  const isDragOver = activeDragFolderId === folder.id
+  const dragCounter = useRef(0)
   const inputRef = useRef<HTMLInputElement>(null)
+  const rowRef = useRef<HTMLDivElement>(null)
   const isRoot = folder.parent_id === null
   const isSelected = selected === folder.id
 
   useEffect(() => { if (renaming) inputRef.current?.focus() }, [renaming])
+
 
   function commitRename() {
     setRenaming(false)
@@ -61,8 +66,12 @@ function FolderNode({ folder, depth, selected, onSelect, onRename, onDelete, onA
 
   return (
     <div>
-      <div onMouseEnter={() => setHovering(true)} onMouseLeave={() => setHovering(false)}
-        style={{ display: 'flex', alignItems: 'center', gap: 4, padding: `5px 8px 5px ${12 + depth * 16}px`, borderRadius: 6, cursor: 'pointer', background: isSelected ? 'rgba(24,95,165,0.1)' : hovering ? 'rgba(0,0,0,0.03)' : 'transparent', marginBottom: 1 }}>
+      <div ref={rowRef} data-folder-id={folder.id} onMouseEnter={() => setHovering(true)} onMouseLeave={() => setHovering(false)}
+        style={{ display: 'flex', alignItems: 'center', gap: 4, padding: `5px 8px 5px ${12 + depth * 16}px`, borderRadius: 6, cursor: 'pointer', marginBottom: 1,
+          background: isDragOver ? 'rgba(78,140,140,0.18)' : isSelected ? 'rgba(24,95,165,0.1)' : hovering ? 'rgba(0,0,0,0.03)' : 'transparent',
+          outline: isDragOver ? '1.5px dashed rgba(78,140,140,0.6)' : 'none',
+          transition: 'background 120ms',
+        }}>
         <div onClick={() => folder.children.length > 0 && setExpanded(e => !e)}
           style={{ width: 14, flexShrink: 0, color: '#9b9991', fontSize: 10 }}>
           {folder.children.length > 0 ? (expanded ? '▾' : '▸') : ''}
@@ -95,7 +104,7 @@ function FolderNode({ folder, depth, selected, onSelect, onRename, onDelete, onA
       </div>
       {expanded && folder.children.map((child: any) => (
         <FolderNode key={child.id} folder={child} depth={depth + 1} selected={selected}
-          onSelect={onSelect} onRename={onRename} onDelete={onDelete} onAddChild={onAddChild} canEdit={canEdit} />
+          onSelect={onSelect} onRename={onRename} onDelete={onDelete} onAddChild={onAddChild} canEdit={canEdit} activeDragFolderId={activeDragFolderId} />
       ))}
     </div>
   )
@@ -149,6 +158,54 @@ export default function CompanyEqmsLevelPage() {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const canEdit = ['admin', 'consultant', 'client', 'client-MR'].includes(sessionRole)
+
+  const [activeDragFolderId, setActiveDragFolderId] = useState<string | null>(null)
+  const dragStateRef = useRef<{ docId: string; title: string; isRecord: boolean } | null>(null)
+
+  useEffect(() => {
+    function getFolderIdFromPoint(x: number, y: number): string | null {
+      const els = document.elementsFromPoint(x, y)
+      for (const el of els) {
+        let node: HTMLElement | null = el as HTMLElement
+        while (node) {
+          if (node.dataset?.folderId) return node.dataset.folderId
+          node = node.parentElement
+        }
+      }
+      return null
+    }
+    function onDragOver(e: DragEvent) {
+      e.preventDefault()
+      if (!dragStateRef.current) return
+      setActiveDragFolderId(getFolderIdFromPoint(e.clientX, e.clientY))
+    }
+    async function onDrop(e: DragEvent) {
+      e.preventDefault()
+      const state = dragStateRef.current
+      if (!state) return
+      const fid = getFolderIdFromPoint(e.clientX, e.clientY)
+      dragStateRef.current = null
+      setActiveDragFolderId(null)
+      if (!fid || fid === selectedFolder) return
+      const url = state.isRecord ? `/api/eqms/records/${state.docId}` : `/api/eqms/documents/${state.docId}`
+      const res = await fetch(url, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ folder_id: fid }) })
+      if (res.ok) {
+        const targetName = folders.find((f: any) => f.id === fid)?.name || 'folder'
+        // Use window location reload to avoid stale closure on selectedFolder
+        alert('"' + state.title + '" moved to ' + targetName)
+        window.location.reload()
+      }
+    }
+    function onDragEnd() { dragStateRef.current = null; setActiveDragFolderId(null) }
+    document.addEventListener('dragover', onDragOver)
+    document.addEventListener('drop', onDrop)
+    document.addEventListener('dragend', onDragEnd)
+    return () => {
+      document.removeEventListener('dragover', onDragOver)
+      document.removeEventListener('drop', onDrop)
+      document.removeEventListener('dragend', onDragEnd)
+    }
+  }, [selectedFolder, folders])
 
   useEffect(() => {
     fetch('/api/auth/session').then(r => r.json()).then(d => setSessionRole(d?.user?.role || ''))
@@ -320,6 +377,36 @@ export default function CompanyEqmsLevelPage() {
     if (selectedFolder) loadDocuments(selectedFolder)
   }
 
+  const [dragDocId, setDragDocId] = useState<string | null>(null)
+  const [dragRecordId, setDragRecordId] = useState<string | null>(null)
+  const [dragDocTitle, setDragDocTitle] = useState('')
+
+  async function moveDocToFolder(targetFolderId: string) {
+    if (!dragDocId || targetFolderId === selectedFolder) { setDragDocId(null); return }
+    const targetName = folders.find(f => f.id === targetFolderId)?.name || 'folder'
+    const res = await fetch(`/api/eqms/documents/${dragDocId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ folder_id: targetFolderId }),
+    })
+    setDragDocId(null)
+    if (res.ok && selectedFolder) {
+      loadDocuments(selectedFolder)
+      alert(`"${dragDocTitle}" moved to ${targetName}`)
+    }
+  }
+
+  async function moveRecordToFolder(targetFolderId: string) {
+    if (!dragRecordId || targetFolderId === selectedFolder) { setDragRecordId(null); return }
+    const res = await fetch(`/api/eqms/records/${dragRecordId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ folder_id: targetFolderId }),
+    })
+    setDragRecordId(null)
+    if (res.ok && selectedFolder) loadRecords(selectedFolder)
+  }
+
   if (!meta) return <div style={{ padding: 40, color: '#9b9991' }}>Invalid level.</div>
 
   const tree = buildTree(folders)
@@ -349,8 +436,8 @@ export default function CompanyEqmsLevelPage() {
       <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 14 }}>
 
         {/* Folder tree */}
-        <div style={{ background: '#fff', border: '0.5px solid rgba(0,0,0,0.1)', borderRadius: 12, overflow: 'hidden' }}>
-          <div style={{ padding: '10px 12px', borderBottom: '0.5px solid rgba(0,0,0,0.08)', background: '#f8f7f4', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ background: '#fff', border: '0.5px solid rgba(0,0,0,0.1)', borderRadius: 12 }}>
+          <div style={{ padding: '10px 12px', borderBottom: '0.5px solid rgba(0,0,0,0.08)', background: '#f8f7f4', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderRadius: '12px 12px 0 0' }}>
             <span style={{ fontSize: 12, fontWeight: 500 }}>Folders</span>
             {canEdit && (
               <button onClick={() => {
@@ -365,7 +452,7 @@ export default function CompanyEqmsLevelPage() {
             ) : tree.map(folder => (
               <FolderNode key={folder.id} folder={folder} depth={0} selected={selectedFolder}
                 onSelect={setSelectedFolder} onRename={renameFolder} onDelete={deleteFolder}
-                onAddChild={handleAddChild} canEdit={canEdit} />
+                onAddChild={handleAddChild} canEdit={canEdit} activeDragFolderId={activeDragFolderId} />
             ))}
             {addingFolder !== null && (
               <div style={{ padding: '4px 8px 4px 32px' }}>
@@ -380,8 +467,8 @@ export default function CompanyEqmsLevelPage() {
         </div>
 
         {/* Document / Record list */}
-        <div style={{ background: '#fff', border: '0.5px solid rgba(0,0,0,0.1)', borderRadius: 12, overflow: 'hidden' }}>
-          <div style={{ padding: '11px 16px', borderBottom: '0.5px solid rgba(0,0,0,0.08)', background: '#f8f7f4', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ background: '#fff', border: '0.5px solid rgba(0,0,0,0.1)', borderRadius: 12 }}>
+          <div style={{ padding: '11px 16px', borderBottom: '0.5px solid rgba(0,0,0,0.08)', background: '#f8f7f4', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderRadius: '12px 12px 0 0' }}>
             <div>
               <div style={{ fontSize: 14, fontWeight: 500 }}>{selectedFolderName || 'Select a folder'}</div>
               <div style={{ fontSize: 12, color: '#6b6a64', marginTop: 1 }}>
@@ -456,10 +543,21 @@ export default function CompanyEqmsLevelPage() {
                         <span style={{ fontSize: 10, color: '#9b9991' }}>· {rec.created_by_name}</span>
                       </div>
                     </div>
-                    <Link href={`/dashboard/companies/${companyId}/documents/${rec.id}`}
-                      style={{ height: 28, padding: '0 12px', fontSize: 12, background: '#F1EFE8', border: '0.5px solid #D3D1C7', borderRadius: 6, color: '#5F5E5A', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', flexShrink: 0 }}>
-                      Open
-                    </Link>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
+                      {canEdit && (
+                        <div
+                          draggable
+                          onDragStart={e => { setDragRecordId(rec.id); e.dataTransfer.effectAllowed = 'move' }}
+                          onDragEnd={() => setDragRecordId(null)}
+                          title="Drag to move to another folder"
+                          style={{ cursor: 'grab', color: '#c8c4bc', padding: '0 4px', fontSize: 14, lineHeight: 1 }}
+                        >⠿</div>
+                      )}
+                      <Link href={`/dashboard/companies/${companyId}/documents/${rec.id}`}
+                        style={{ height: 28, padding: '0 12px', fontSize: 12, background: '#F1EFE8', border: '0.5px solid #D3D1C7', borderRadius: 6, color: '#5F5E5A', textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>
+                        Open
+                      </Link>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -510,7 +608,19 @@ export default function CompanyEqmsLevelPage() {
                           <div style={{ fontSize: 12, color: '#ccc', fontStyle: 'italic' }}>—</div>
                         )}
                       </div>
-                      <div style={{ padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div
+                        draggable={!!(canEdit && hasDraft)}
+                        onDragStart={canEdit && hasDraft ? e => {
+                          e.dataTransfer.effectAllowed = 'move'
+                          dragStateRef.current = { docId: doc.id, title: doc.title, isRecord: false }
+                        } : undefined}
+                        onDragEnd={canEdit && hasDraft ? () => { dragStateRef.current = null; setActiveDragFolderId(null) } : undefined}
+                        style={{ padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 10,
+                          cursor: canEdit && hasDraft ? 'grab' : 'default',
+                          userSelect: 'none',
+                          opacity: dragDocId && dragDocId !== doc.id ? 0.5 : 1,
+                          transition: 'opacity 150ms',
+                        }}>
                         {hasDraft ? (
                           <>
                             <div style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: isPending ? '#c8a96e' : '#9b9991' }} />
@@ -522,7 +632,10 @@ export default function CompanyEqmsLevelPage() {
                                 {!activeVer && <span style={{ fontSize: 10, color: '#9b9991' }}>· {doc.created_by_name}</span>}
                               </div>
                             </div>
-                            <div style={{ display: 'flex', gap: 5, flexShrink: 0 }}>
+                            <div style={{ display: 'flex', gap: 5, flexShrink: 0, alignItems: 'center' }}>
+                              {canEdit && hasDraft && (
+                                <span title="Drag to move folder" style={{ color: '#c8c4bc', fontSize: 14, lineHeight: 1, pointerEvents: 'none' }}>⠿</span>
+                              )}
                               <Link href={`/dashboard/companies/${companyId}/documents/${doc.id}`}
                                 style={{ height: 28, padding: '0 12px', fontSize: 12, background: '#E6F1FB', border: '0.5px solid #85B7EB', borderRadius: 6, color: '#185FA5', textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>
                                 Open
